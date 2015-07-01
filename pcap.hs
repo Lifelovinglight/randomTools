@@ -25,4 +25,8 @@ handlePackets :: PcapHandle -> IO Int
 handlePackets handle = loopBS handle (-1) showPacket
 
 showPacket :: PktHdr -> ByteString -> IO ()
-showPacket header bstr = Prelude.putStrLn $ (Prelude.filter isPrint $ Prelude.filter isAscii $ fmap chr $ fmap fromIntegral $ unpack bstr)
+showPacket header bstr = Prelude.putStrLn $ transformPacket bstr
+
+transformPacket :: ByteString -> String
+transformPacket bstr = Prelude.filter isPrint . Prelude.filter isAscii
+                       . fmap chr . fmap fromIntegral . unpack $ bstr
