@@ -3,6 +3,7 @@ module Main where
 import Network.Pcap
 import Data.ByteString
 import Data.Char
+import Control.Applicative
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -28,5 +29,8 @@ showPacket :: PktHdr -> ByteString -> IO ()
 showPacket header bstr = Prelude.putStrLn $ transformPacket bstr
 
 transformPacket :: ByteString -> String
-transformPacket bstr = Prelude.filter isPrint . Prelude.filter isAscii
-                       . fmap chr . fmap fromIntegral . unpack $ bstr
+transformPacket bstr = Prelude.filter isPrint
+                       . Prelude.filter isAscii
+                       . fmap chr
+                       . fmap fromIntegral
+                       . unpack $ bstr
