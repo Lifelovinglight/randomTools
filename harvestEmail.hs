@@ -50,7 +50,8 @@ runParserState :: forall s a t a1.
 runParserState parser state arg = runParser (parser >> getState) state "" arg 
 
 emailParser :: Parsec String [String] ()
-emailParser = try emailParser' <|> (anyToken >> (emailParser <|> (eof >> return ())))
+emailParser = try emailParser' <|> (anyToken >> (emailParser <|> (eof >>
+                                                                  return () )))
 
 emailParser' :: Parsec String [String] ()
 emailParser' = do
@@ -58,7 +59,8 @@ emailParser' = do
   _ <- (char '@')
   addressParts <- sepEndBy1 domainPartParser (char '.')
   domainPart <- tldParser
-  modifyState ((namePart ++ "@" ++ (concat $ intersperse "." (addressParts ++ [domainPart]))) :)
+  modifyState ((namePart ++ "@" ++ (concat $ intersperse "." (addressParts ++
+                                                              [domainPart]))) :)
   return ()
 
 namePartParser :: Parsec String [String] String
