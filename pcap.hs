@@ -2,6 +2,7 @@ module Main where
 
 import Network.Pcap
 import Data.ByteString
+import Data.Char
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -16,7 +17,7 @@ import Data.ByteString
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 main :: IO ()
-main = openLive "any" 0 True 1000
+main = openLive "any" 1000 True 10000
        >>= handlePackets
        >>= print
 
@@ -24,4 +25,4 @@ handlePackets :: PcapHandle -> IO Int
 handlePackets handle = loopBS handle (-1) showPacket
 
 showPacket :: PktHdr -> ByteString -> IO ()
-showPacket header bstr = print $ unpack bstr
+showPacket header bstr = Prelude.putStrLn $ (Prelude.filter isPrint $ Prelude.filter isAscii $ fmap chr $ fmap fromIntegral $ unpack bstr)
