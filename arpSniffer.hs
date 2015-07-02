@@ -38,7 +38,7 @@ program (device:_) = openLive device 2048 True 10000
                      >>= print
 program _ = return ()
 
--- | Set up the handler
+-- | Set up the handler.
 handlePackets :: PcapHandle -> IO Int
 handlePackets handle = loopBS handle (-1) showPacket
 
