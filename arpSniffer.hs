@@ -29,7 +29,7 @@ main = getArgs
         help fn argv = fn argv
 
 program :: [String] -> IO ()
-program (device:_) = openLive device 1000 True 10000
+program (device:_) = openLive device 2048 True 10000
                      >>= handlePackets
                      >>= print
 program _ = return ()
@@ -48,7 +48,7 @@ transformPacket bstr = handlePacket
                        . fmap fromIntegral
                        . unpack $ bstr
 
-handlePacket :: [Integer] -> Maybe String
+handlePacket :: [Int] -> Maybe String
 handlePacket (0:1:8:0:6:4:0:oper:rest) | oper == 1 =
                                            maybe Nothing (Just . ("Q " ++))
                                            $ handle' rest
@@ -56,7 +56,7 @@ handlePacket (0:1:8:0:6:4:0:oper:rest) | oper == 1 =
                                            maybe Nothing (Just . ("A " ++))
                                            $ handle' rest
                                        | otherwise = Nothing
-  where handle' :: [Integer] -> Maybe String
+  where handle' :: [Int] -> Maybe String
         handle' packetHeader | Prelude.length packetHeader == 20 =
                                  Just
                                  $ showMac packetHeader 0
@@ -75,7 +75,7 @@ formatHex :: String -> String
 formatHex ax@(_:[]) = '0' : ax
 formatHex ax = ax
 
-showMac :: [Integer] -> Int -> String
+showMac :: [Int] -> Int -> String
 showMac packetHeader offset = Prelude.concat
                               $ Data.List.intersperse ":"
                               $ fmap2 toUpper
@@ -85,7 +85,7 @@ showMac packetHeader offset = Prelude.concat
   where fmap2 :: (a -> a) -> [[a]] -> [[a]]
         fmap2 = fmap . fmap
 
-showIp :: [Integer] -> Int -> String
+showIp :: [Int] -> Int -> String
 showIp packetHeader offset = padRight ((3 * 4) + 2)
                              $ Prelude.concat
                              $ Data.List.intersperse "."
