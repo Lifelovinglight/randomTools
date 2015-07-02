@@ -7,8 +7,9 @@ import Data.ByteString
 import Data.Char
 import System.IO (hFlush, stdout)
 import Numeric (showHex)
-import Data.List (intersperse)
+import Data.List (intercalate)
 import System.Environment (getArgs)
+import Control.Monad (void)
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -24,9 +25,7 @@ import System.Environment (getArgs)
 
 -- | Entry point.
 main :: IO ()
-main = getArgs
-       >>= help program
-       >> return ()
+main = void (getArgs >>= help program)
   where help :: ([String] -> IO ()) -> [String] -> IO ()
         help _ [] = Prelude.putStrLn "Usage: arpSniffer <device>"
         help fn argv = fn argv
@@ -44,8 +43,7 @@ handlePackets handle = loopBS handle (-1) showPacket
 
 -- | Packet handler, called for every read packet.
 showPacket :: PktHdr -> ByteString -> IO ()
-showPacket _ bstr = (maybe (return ()) Prelude.putStrLn
-                     $ transformPacket bstr)
+showPacket _ bstr = maybe (return ()) Prelude.putStrLn (transformPacket bstr)
                     >> hFlush stdout
 
 -- | First layer dissector, drop ethernet header.
@@ -58,10 +56,10 @@ transformPacket bstr = handlePacket
 -- | Second layer dissector, pattern match on ARP protocol.
 handlePacket :: [Int] -> Maybe String
 handlePacket (0:1:8:0:6:4:0:oper:rest) | oper == 1 =
-                                           maybe Nothing (Just . ("Q " ++))
+                                           fmap ("Q " ++)
                                            $ handle' rest
                                        | oper == 2 =
-                                           maybe Nothing (Just . ("A " ++))
+                                           fmap ("A " ++)
                                            $ handle' rest
                                        | otherwise = Nothing
   where handle' :: [Int] -> Maybe String
@@ -78,7 +76,7 @@ handlePacket _ = Nothing
 
 -- | Pad a string to a given length.
 padRight :: Int -> String -> String
-padRight len str = str ++ Prelude.replicate (len - (Prelude.length str)) ' '
+padRight len str = str ++ Prelude.replicate (len - Prelude.length str) ' '
 
 -- | Pad a byte in hex format with zeroes to 2 chars width.
 formatHex :: String -> String
@@ -87,8 +85,7 @@ formatHex ax = ax
 
 -- | Display a HW address from a certain offset in a packet header.
 showMac :: [Int] -> Int -> String
-showMac packetHeader offset = Prelude.concat
-                              $ Data.List.intersperse ":"
+showMac packetHeader offset = Data.List.intercalate ":"
                               $ fmap2 toUpper
                               $ fmap (formatHex . (`showHex` ""))
                               $ Prelude.take 6
@@ -99,8 +96,7 @@ showMac packetHeader offset = Prelude.concat
 -- | Display an IPv4 adress from a certain offset in a packet header.
 showIp :: [Int] -> Int -> String
 showIp packetHeader offset = padRight ((3 * 4) + 2)
-                             $ Prelude.concat
-                             $ Data.List.intersperse "."
+                             $ Data.List.intercalate "."
                              $ fmap show
                              $ Prelude.take 4
                              $ Prelude.drop offset packetHeader
