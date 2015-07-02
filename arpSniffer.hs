@@ -1,3 +1,5 @@
+-- | A custom ARP sniffer using Pcap.
+
 module Main where
 
 import Network.Pcap
@@ -20,6 +22,7 @@ import System.Environment (getArgs)
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+-- | Entry point.
 main :: IO ()
 main = getArgs
        >>= help program
@@ -27,27 +30,32 @@ main = getArgs
   where help :: ([String] -> IO ()) -> [String] -> IO ()
         help _ [] = Prelude.putStrLn "Usage: arpSniffer <device>"
         help fn argv = fn argv
-
+        
+-- | Open the device and set up the handler.
 program :: [String] -> IO ()
 program (device:_) = openLive device 2048 True 10000
                      >>= handlePackets
                      >>= print
 program _ = return ()
 
+-- | Set up the handler
 handlePackets :: PcapHandle -> IO Int
 handlePackets handle = loopBS handle (-1) showPacket
 
+-- | Packet handler, called for every read packet.
 showPacket :: PktHdr -> ByteString -> IO ()
 showPacket _ bstr = (maybe (return ()) Prelude.putStrLn
                      $ transformPacket bstr)
                     >> hFlush stdout
 
+-- | First layer dissector, drop ethernet header.
 transformPacket :: ByteString -> Maybe String
 transformPacket bstr = handlePacket
                        . Prelude.drop 14
                        . fmap fromIntegral
                        . unpack $ bstr
 
+-- | Second layer dissector, pattern match on ARP protocol.
 handlePacket :: [Int] -> Maybe String
 handlePacket (0:1:8:0:6:4:0:oper:rest) | oper == 1 =
                                            maybe Nothing (Just . ("Q " ++))
@@ -68,13 +76,16 @@ handlePacket (0:1:8:0:6:4:0:oper:rest) | oper == 1 =
                              | otherwise = Nothing
 handlePacket _ = Nothing
 
+-- | Pad a string to a given length.
 padRight :: Int -> String -> String
 padRight len str = str ++ Prelude.replicate (len - (Prelude.length str)) ' '
 
+-- | Pad a byte in hex format with zeroes to 2 chars width.
 formatHex :: String -> String
 formatHex ax@(_:[]) = '0' : ax
 formatHex ax = ax
 
+-- | Display a HW address from a certain offset in a packet header.
 showMac :: [Int] -> Int -> String
 showMac packetHeader offset = Prelude.concat
                               $ Data.List.intersperse ":"
@@ -85,6 +96,7 @@ showMac packetHeader offset = Prelude.concat
   where fmap2 :: (a -> a) -> [[a]] -> [[a]]
         fmap2 = fmap . fmap
 
+-- | Display an IPv4 adress from a certain offset in a packet header.
 showIp :: [Int] -> Int -> String
 showIp packetHeader offset = padRight ((3 * 4) + 2)
                              $ Prelude.concat
