@@ -51,7 +51,7 @@ transformPacket :: ByteString -> Maybe String
 transformPacket bstr = handlePacket
                        . drop 14
                        . fmap fromIntegral
-                       . unpack $ bstr
+                       $ unpack bstr
 
 -- | Second layer dissector, pattern match on ARP protocol.
 handlePacket :: [Int] -> Maybe String
