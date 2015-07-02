@@ -86,16 +86,16 @@ formatHex ax = ax
 -- | Display a HW address from a certain offset in a packet header.
 showMac :: [Int] -> Int -> String
 showMac packetHeader offset = fmap toUpper
-                              $ intercalate ":"
-                              $ fmap (formatHex . (`showHex` ""))
-                              $ take 6
+                              . intercalate ":"
+                              . fmap (formatHex . (`showHex` ""))
+                              . take 6
                               $ drop offset packetHeader
 
 -- | Display an IPv4 adress from a certain offset in a packet header.
 showIp :: [Int] -> Int -> String
 showIp packetHeader offset = padRight ((3 * 4) + 2)
-                             $ intercalate "."
-                             $ fmap show
-                             $ take 4
+                             . intercalate "."
+                             . fmap show
+                             . take 4
                              $ drop offset packetHeader
     
