@@ -3,6 +3,7 @@ module Main where
 import Network.Pcap
 import Data.ByteString
 import Data.Char
+import System.IO
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -25,7 +26,7 @@ handlePackets :: PcapHandle -> IO Int
 handlePackets handle = loopBS handle (-1) showPacket
 
 showPacket :: PktHdr -> ByteString -> IO ()
-showPacket _ bstr = Prelude.putStrLn $ transformPacket bstr
+showPacket _ bstr = (Prelude.putStrLn $ transformPacket bstr) >> hFlush stdout
 
 transformPacket :: ByteString -> String
 transformPacket bstr = Prelude.filter isPrint
@@ -33,3 +34,4 @@ transformPacket bstr = Prelude.filter isPrint
                        . fmap chr
                        . fmap fromIntegral
                        . unpack $ bstr
+

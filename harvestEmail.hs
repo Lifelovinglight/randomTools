@@ -25,9 +25,11 @@ import System.IO ()
 import Data.List (intersperse)
 import Data.Functor.Identity
 import Control.Exception (catch, SomeException)
+import System.IO
+import Network.Socket
 
 main :: IO ()
-main = catch (getArgs >>= help program) handleExceptions
+main = catch (getArgs >>= help program') handleExceptions
   where help :: ([String] -> IO ()) -> [String] -> IO ()
         help _ [] = putStrLn "Usage: harvestEmail <files>"
         help fn argv = fn argv
@@ -42,6 +44,21 @@ program (arg:argv) =
   return . runParserState (many emailParser) [] >>=
   either print (mapM_ putStrLn) >>
   program argv
+  
+program' :: [String] -> IO ()
+program' argv = do
+  str <- getLine
+  either print (mapM_ filterEmails) $ runParserState (many emailParser) [] str
+  hFlush stdout
+  program' argv
+
+resolve :: String -> IO (Maybe SockAddr)
+resolve hostname = catch (getAddrInfo Nothing (Just hostname) Nothing >>= return . Just . addrAddress . head) ((const (return Nothing)) :: SomeException -> IO (Maybe SockAddr))
+
+filterEmails :: String -> IO ()
+filterEmails str = (resolve $ tail $ dropWhile (/= '@') str) >>= outputEmails
+  where outputEmails Nothing = return ()
+        outputEmails (Just _) = putStrLn str
 
 runParserState :: forall s a t a1.
                   Stream s Data.Functor.Identity.Identity t =>
@@ -81,5 +98,5 @@ endOfEmailParser = notAlphaNum >> return ()
 tldParser :: Parsec String [String] String
 tldParser = do
   tldPart <- try (count 3 letter) <|> (count 2 letter)
-  _ <- endOfEmailParser
+  _ <- try endOfEmailParser <|> eof
   return tldPart
