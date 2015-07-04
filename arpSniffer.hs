@@ -10,7 +10,7 @@ import Numeric (showHex)
 import Data.List (intercalate)
 import System.Environment (getArgs)
 import Control.Monad (void, liftM)
-import Control.Applicative
+import Control.Applicative ()
 import qualified Data.Attoparsec.ByteString as APB
 import Data.Word
 
@@ -33,7 +33,7 @@ data ArpPacket = ArpPacket { oper :: ArpOperation,
                              thw :: ArpHardwareAddr,
                              tip :: ArpIPv4 }
 
-instance Show ArpPacket where
+instance Show ArpPacket where 
   show (ArpPacket oper' shw' sip' thw' tip') =
     unwords [show oper',
              show shw',
@@ -45,10 +45,8 @@ instance Show ArpPacket where
 data ArpOperation = ArpOperation Word8
 
 instance Show ArpOperation where
-  show (ArpOperation 1) = "Q"
-  show (ArpOperation 2) = "A"
-  show _ = "U"
-
+  show (ArpOperation b) = show b
+  
 -- | A 6-byte Ethernet HW address.
 data ArpHardwareAddr = ArpHardwareAddr ByteString
 
@@ -65,8 +63,7 @@ data ArpIPv4 = ArpIPv4 ByteString
 
 instance Show ArpIPv4 where
   show (ArpIPv4 bstr) =
-    padRight ((3 * 4) + 1)
-    . intercalate "."
+    intercalate "."
     . fmap show
     . take 4
     $ unpack bstr
@@ -92,11 +89,9 @@ handlePackets handle = loopBS handle (-1) showPacket
 
 -- | Packet handler, called for every read packet.
 showPacket :: PktHdr -> ByteString -> IO ()
-showPacket _ bstr = handleParserError (APB.parseOnly arpPacketParser bstr)
-                    >> hFlush stdout
-  where handleParserError :: Either String ArpPacket -> IO ()
-        handleParserError (Right packet) = print packet
-        handleParserError (Left _) = return ()
+showPacket _ bstr =
+  either (const (return ())) print (APB.parseOnly arpPacketParser bstr)
+  >> hFlush stdout 
 
 -- | A null parser that drops the 14-byte Ethernet header
   -- and the ARP protocol, hardware type and address size fields.
@@ -119,7 +114,7 @@ arpPacketParser = do
 
 -- | A parser for an ARP operation.
 arpOperationParser :: APB.Parser ArpOperation
-arpOperationParser = liftM ArpOperation (APB.word8 1 <|> APB.word8 2)
+arpOperationParser = liftM ArpOperation APB.anyWord8
     
 -- | Pad a string to a given length.
 padRight :: Int -> String -> String
