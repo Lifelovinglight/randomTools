@@ -1,15 +1,18 @@
--- | A custom ARP sniffer using Pcap.
+-- | A custom ARP sniffer using Pcap and Attoparsec.
 
 module Main where
 
 import Network.Pcap
-import Data.ByteString (ByteString, unpack)
+import Data.ByteString (ByteString, unpack, pack)
 import Data.Char
 import System.IO (hFlush, stdout)
 import Numeric (showHex)
 import Data.List (intercalate)
 import System.Environment (getArgs)
-import Control.Monad (void)
+import Control.Monad (void, liftM)
+import Control.Applicative
+import qualified Data.Attoparsec.ByteString as APB
+import Data.Word
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -23,19 +26,65 @@ import Control.Monad (void)
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+-- | An ARP packet.
+data ArpPacket = ArpPacket { oper :: ArpOperation,
+                             shw :: ArpHardwareAddr,
+                             sip :: ArpIPv4,
+                             thw :: ArpHardwareAddr,
+                             tip :: ArpIPv4 }
+
+instance Show ArpPacket where
+  show (ArpPacket oper' shw' sip' thw' tip') =
+    unwords [show oper',
+             show shw',
+             show sip',
+             show thw',
+             show tip']
+
+-- | A byte indicating the ARP operation.
+data ArpOperation = ArpOperation Word8
+
+instance Show ArpOperation where
+  show (ArpOperation 1) = "Q"
+  show (ArpOperation 2) = "A"
+  show _ = "U"
+
+-- | A 6-byte Ethernet HW address.
+data ArpHardwareAddr = ArpHardwareAddr ByteString
+
+instance Show ArpHardwareAddr where
+  show (ArpHardwareAddr bstr) =
+    fmap toUpper
+    . intercalate ":"
+    . fmap (formatHex . (`showHex` ""))
+    . take 6
+    $ unpack bstr
+
+-- | An IPv4 address.
+data ArpIPv4 = ArpIPv4 ByteString
+
+instance Show ArpIPv4 where
+  show (ArpIPv4 bstr) =
+    padRight ((3 * 4) + 1)
+    . intercalate "."
+    . fmap show
+    . take 4
+    $ unpack bstr
+              
 -- | Entry point.
 main :: IO ()
 main = void (getArgs >>= help program)
-  where help :: ([String] -> IO ()) -> [String] -> IO ()
+  where help :: (String -> IO ()) -> [String] -> IO ()
         help _ [] = putStrLn "Usage: arpSniffer <device>"
-        help fn argv = fn argv
+        help fn (arg:_) = fn arg
         
 -- | Open the device and set up the handler.
-program :: [String] -> IO ()
-program (device:_) = openLive device 2048 True 10000
-                     >>= handlePackets
-                     >>= putStrLn . ("Captured packets: " ++) . show 
-program _ = return ()
+program :: String -> IO ()
+program device = openLive device 2048 True 10000
+                 >>= handlePackets
+                 >>= putStrLn
+                 . ("Captured packets: " ++)
+                 . show
 
 -- | Set up the handler.
 handlePackets :: PcapHandle -> IO Int
@@ -43,59 +92,47 @@ handlePackets handle = loopBS handle (-1) showPacket
 
 -- | Packet handler, called for every read packet.
 showPacket :: PktHdr -> ByteString -> IO ()
-showPacket _ bstr = maybe (return ()) putStrLn (transformPacket bstr)
+showPacket _ bstr = handleParserError (APB.parseOnly arpPacketParser bstr)
                     >> hFlush stdout
+  where handleParserError :: Either String ArpPacket -> IO ()
+        handleParserError (Right packet) = print packet
+        handleParserError (Left _) = return ()
 
--- | First layer dissector, drop ethernet header.
-transformPacket :: ByteString -> Maybe String
-transformPacket bstr = handlePacket
-                       . drop 14
-                       . fmap fromIntegral
-                       $ unpack bstr
+arpHeaderParser :: APB.Parser ()
+arpHeaderParser = APB.take 14
+                  >> APB.string arpHeader
+                  >> return ()
+  where arpHeader = pack [0, 1, 8, 0, 6, 4, 0]
 
--- | Second layer dissector, pattern match on ARP protocol.
-handlePacket :: [Int] -> Maybe String
-handlePacket (0:1:8:0:6:4:0:oper:rest) | oper == 1 =
-                                           fmap ("Q " ++)
-                                           $ handle' rest
-                                       | oper == 2 =
-                                           fmap ("A " ++)
-                                           $ handle' rest
-                                       | otherwise = Nothing
-  where handle' :: [Int] -> Maybe String
-        handle' packetHeader | length packetHeader == 20 =
-                                 Just
-                                 $ showMac packetHeader 0
-                                 ++ " "
-                                 ++ showIp packetHeader 6
-                                 ++ showMac packetHeader 10
-                                 ++ " "
-                                 ++ showIp packetHeader 16
-                             | otherwise = Nothing
-handlePacket _ = Nothing
+-- | A parser for an ARP packet.
+arpPacketParser :: APB.Parser ArpPacket
+arpPacketParser = do
+  _ <- arpHeaderParser
+  oper' <- arpOperationParser
+  shw' <- macParser
+  sip' <- ipParser
+  thw' <- macParser
+  tip' <- ipParser
+  return $ ArpPacket oper' shw' sip' thw' tip'
 
+-- | A parser for an ARP operation.
+arpOperationParser :: APB.Parser ArpOperation
+arpOperationParser = liftM ArpOperation (APB.word8 1 <|> APB.word8 2)
+    
 -- | Pad a string to a given length.
 padRight :: Int -> String -> String
 padRight len str = str ++ replicate (len - length str) ' '
 
 -- | Pad a byte in hex format with zeroes to 2 chars width.
 formatHex :: String -> String
-formatHex ax@(_:[]) = '0' : ax
+formatHex ax@[_] = '0' : ax
 formatHex ax = ax
 
--- | Display a HW address from a certain offset in a packet header.
-showMac :: [Int] -> Int -> String
-showMac packetHeader offset = fmap toUpper
-                              . intercalate ":"
-                              . fmap (formatHex . (`showHex` ""))
-                              . take 6
-                              $ drop offset packetHeader
+-- | A parser for an Ethernet HW address.
+macParser :: APB.Parser ArpHardwareAddr
+macParser = liftM ArpHardwareAddr (APB.take 6)
 
--- | Display an IPv4 adress from a certain offset in a packet header.
-showIp :: [Int] -> Int -> String
-showIp packetHeader offset = padRight ((3 * 4) + 2)
-                             . intercalate "."
-                             . fmap show
-                             . take 4
-                             $ drop offset packetHeader
-    
+-- | A parser for an IPv4 address.
+ipParser :: APB.Parser ArpIPv4
+ipParser = liftM ArpIPv4 (APB.take 4)
+           
