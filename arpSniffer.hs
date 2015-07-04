@@ -9,7 +9,7 @@ import System.IO (hFlush, stdout)
 import Numeric (showHex)
 import Data.List (intercalate)
 import System.Environment (getArgs)
-import Control.Monad (void, liftM)
+import Control.Monad (void, ap, liftM)
 import Control.Applicative ()
 import qualified Data.Attoparsec.ByteString as APB
 import Data.Word
@@ -98,22 +98,20 @@ showPacket _ bstr =
 -- | A null parser that drops the 14-byte Ethernet header
   -- and the ARP protocol, hardware type and address size fields.
 arpHeaderParser :: APB.Parser ()
-arpHeaderParser = APB.take 14
-                  >> APB.string arpHeader
-                  >> return ()
+arpHeaderParser = void (APB.take 14 >> APB.string arpHeader)
   where arpHeader = pack [0, 1, 8, 0, 6, 4, 0]
 
 -- | A parser for an ARP packet.
 arpPacketParser :: APB.Parser ArpPacket
-arpPacketParser = do
-  _ <- arpHeaderParser
-  oper' <- arpOperationParser
-  shw' <- macParser
-  sip' <- ipParser
-  thw' <- macParser
-  tip' <- ipParser
-  return $ ArpPacket oper' shw' sip' thw' tip'
-
+arpPacketParser = 
+  arpHeaderParser
+  >> return ArpPacket
+  `ap` arpOperationParser
+  `ap` macParser
+  `ap` ipParser
+  `ap` macParser
+  `ap` ipParser
+  
 -- | A parser for an ARP operation.
 arpOperationParser :: APB.Parser ArpOperation
 arpOperationParser = liftM ArpOperation APB.anyWord8
