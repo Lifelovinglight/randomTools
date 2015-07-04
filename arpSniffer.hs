@@ -98,6 +98,8 @@ showPacket _ bstr = handleParserError (APB.parseOnly arpPacketParser bstr)
         handleParserError (Right packet) = print packet
         handleParserError (Left _) = return ()
 
+-- | A null parser that drops the 14-byte Ethernet header
+  -- and the ARP protocol, hardware type and address size fields.
 arpHeaderParser :: APB.Parser ()
 arpHeaderParser = APB.take 14
                   >> APB.string arpHeader
