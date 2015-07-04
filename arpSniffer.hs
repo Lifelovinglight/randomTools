@@ -45,13 +45,15 @@ instance Show ArpPacket where
 data ArpOperation = ArpOperation Word8
 
 instance Show ArpOperation where
+  show (ArpOperation 1) = "Q"
+  show (ArpOperation 2) = "A"
   show (ArpOperation b) = show b
   
 -- | A 6-byte Ethernet HW address.
 data ArpHardwareAddr = ArpHardwareAddr ByteString
 
 instance Show ArpHardwareAddr where
-  show (ArpHardwareAddr bstr) =
+  show (ArpHardwareAddr bstr) = 
     fmap toUpper
     . intercalate ":"
     . fmap (formatHex . (`showHex` ""))
