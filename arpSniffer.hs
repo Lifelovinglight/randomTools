@@ -73,7 +73,12 @@ instance Show ArpIPv4 where
     . fmap show
     . take 4
     $ unpack bstr
-              
+
+anyWord16 = do
+  a <- APB.anyWord8
+  b <- APB.anyWord8
+  return (((fromIntegral :: Word8 -> Word16) b) + (byteSwap16 $ (fromIntegral :: Word8 -> Word16) a))
+    
 -- | Entry point.
 main :: IO ()
 main = catch (void (getArgs >>= help program)) exceptionHandler
@@ -132,8 +137,7 @@ showPacket (_, bstr) =
 -- | An ethernet frame.
 data EthernetHeader = EthernetHeader { etherSrc :: HardwareAddr,
                                        etherDst :: HardwareAddr,
-                                       etherType1 :: Word8,
-                                       etherType2 :: Word8 }
+                                       etherType :: Word16 }
 
 -- | An ethernet header parser.
 ethernetHeaderParser :: APB.Parser EthernetHeader
@@ -141,8 +145,7 @@ ethernetHeaderParser =
   return EthernetHeader
   `ap` macParser
   `ap` macParser
-  `ap` APB.anyWord8
-  `ap` APB.anyWord8
+  `ap` anyWord16
 
 -- | A null parser that drops the 14-byte Ethernet header
   -- and the ARP protocol, hardware type and address size fields.
