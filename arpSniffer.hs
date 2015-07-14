@@ -32,9 +32,9 @@ import System.IO.Unsafe
 
 -- | An ARP packet.
 data ArpPacket = ArpPacket { oper :: ArpOperation,
-                             shw :: ArpHardwareAddr,
+                             shw :: HardwareAddr,
                              sip :: ArpIPv4,
-                             thw :: ArpHardwareAddr,
+                             thw :: HardwareAddr,
                              tip :: ArpIPv4 }
 
 instance Show ArpPacket where 
@@ -54,10 +54,10 @@ instance Show ArpOperation where
   show (ArpOperation b) = show b
   
 -- | A 6-byte Ethernet HW address.
-data ArpHardwareAddr = ArpHardwareAddr ByteString
+data HardwareAddr = HardwareAddr ByteString
 
-instance Show ArpHardwareAddr where
-  show (ArpHardwareAddr bstr) = 
+instance Show HardwareAddr where
+  show (HardwareAddr bstr) = 
     fmap toUpper
     . intercalate ":"
     . fmap (formatHex . (`showHex` ""))
@@ -129,17 +129,33 @@ showPacket :: (PktHdr, ByteString) -> Maybe String
 showPacket (_, bstr) =
   either (const Nothing) (Just . show) (APB.parseOnly arpPacketParser bstr)
 
+-- | An ethernet frame.
+data EthernetHeader = EthernetHeader { etherSrc :: HardwareAddr,
+                                       etherDst :: HardwareAddr,
+                                       etherType1 :: Word8,
+                                       etherType2 :: Word8 }
+
+-- | An ethernet header parser.
+ethernetHeaderParser :: APB.Parser EthernetHeader
+ethernetHeaderParser =
+  return EthernetHeader
+  `ap` macParser
+  `ap` macParser
+  `ap` APB.anyWord8
+  `ap` APB.anyWord8
+
 -- | A null parser that drops the 14-byte Ethernet header
   -- and the ARP protocol, hardware type and address size fields.
 arpHeaderParser :: APB.Parser ()
-arpHeaderParser = void (APB.take 14 >> APB.string arpHeader)
+arpHeaderParser = void $ APB.string arpHeader
   where arpHeader :: ByteString
         arpHeader = pack [0, 1, 8, 0, 6, 4, 0]
 
 -- | A parser for an ARP packet.
 arpPacketParser :: APB.Parser ArpPacket
-arpPacketParser = 
-  arpHeaderParser
+arpPacketParser =
+  ethernetHeaderParser
+  >> arpHeaderParser
   >> return ArpPacket
   `ap` arpOperationParser
   `ap` macParser
@@ -161,8 +177,8 @@ formatHex ax@[_] = '0' : ax
 formatHex ax = ax
 
 -- | A parser for an Ethernet HW address.
-macParser :: APB.Parser ArpHardwareAddr
-macParser = liftM ArpHardwareAddr (APB.take 6)
+macParser :: APB.Parser HardwareAddr
+macParser = liftM HardwareAddr (APB.take 6)
 
 -- | A parser for an IPv4 address.
 ipParser :: APB.Parser ArpIPv4
