@@ -13,6 +13,10 @@ import Control.Monad (void, ap, liftM)
 import Control.Applicative ()
 import qualified Data.Attoparsec.ByteString as APB
 import Data.Word
+import Control.Exception (catch, SomeException)
+import System.Exit (exitWith, ExitCode(..))
+import Control.Parallel
+import System.IO.Unsafe
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -72,34 +76,65 @@ instance Show ArpIPv4 where
               
 -- | Entry point.
 main :: IO ()
-main = void (getArgs >>= help program)
+main = catch (void (getArgs >>= help program)) exceptionHandler
   where help :: (String -> IO ()) -> [String] -> IO ()
         help _ [] = putStrLn "Usage: arpSniffer <device>"
         help fn (arg:_) = fn arg
+
+-- | Main exception handler.
+exceptionHandler :: SomeException -> IO ()
+exceptionHandler exception =
+  putStrLn (('\n':) (show exception))
+  >> hFlush stdout
+  >> exitWith exitCodeFailure
+  where
+    exitCodeFailure :: ExitCode
+    exitCodeFailure = ExitFailure 1
         
 -- | Open the device and set up the handler.
 program :: String -> IO ()
-program device = openLive device 2048 True 10000
-                 >>= handlePackets
-                 >>= putStrLn
-                 . ("Captured packets: " ++)
-                 . show
-
+program device = do
+  handle <- openLive device 2048 True 10000
+  setNonBlock handle False
+  handlePackets handle
+  
 -- | Set up the handler.
-handlePackets :: PcapHandle -> IO Int
-handlePackets handle = loopBS handle (-1) showPacket
+handlePackets :: PcapHandle -> IO ()
+handlePackets handle =
+  packetStream handle
+  >>= mapM_ printMaybe . parMap' showPacket
+
+printMaybe :: Maybe String -> IO ()
+printMaybe Nothing = return ()
+printMaybe (Just a) = putStrLn a
+
+packetStream :: PcapHandle -> IO [(PktHdr, ByteString)]
+packetStream handle = lazyIO (nextBS handle)
+
+-- | Turn an IO action into a lazy list.
+lazyIO :: (IO a) -> IO [a]
+lazyIO fn = do
+  a <- fn
+  b <- unsafeInterleaveIO $ lazyIO fn
+  return (a : b)
+
+-- | Lazy parallel map.
+parMap' :: (a -> b) -> [a] -> [b]
+parMap' fn (a:ax) = par an par au (an : au)
+    where an = fn a
+          au = parMap' fn ax
 
 -- | Packet handler, called for every read packet.
-showPacket :: PktHdr -> ByteString -> IO ()
-showPacket _ bstr =
-  either (const (return ())) print (APB.parseOnly arpPacketParser bstr)
-  >> hFlush stdout 
+showPacket :: (PktHdr, ByteString) -> Maybe String
+showPacket (_, bstr) =
+  either (const Nothing) (Just . show) (APB.parseOnly arpPacketParser bstr)
 
 -- | A null parser that drops the 14-byte Ethernet header
   -- and the ARP protocol, hardware type and address size fields.
 arpHeaderParser :: APB.Parser ()
 arpHeaderParser = void (APB.take 14 >> APB.string arpHeader)
-  where arpHeader = pack [0, 1, 8, 0, 6, 4, 0]
+  where arpHeader :: ByteString
+        arpHeader = pack [0, 1, 8, 0, 6, 4, 0]
 
 -- | A parser for an ARP packet.
 arpPacketParser :: APB.Parser ArpPacket
