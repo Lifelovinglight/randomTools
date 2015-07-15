@@ -18,7 +18,8 @@ import System.Exit (exitWith, ExitCode(..))
 import Control.Parallel
 import System.IO.Unsafe
 import Data.Bits
-
+import System.Endian
+import Control.Arrow
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -76,21 +77,80 @@ instance Show IPv4 where
     . take 4
     $ unpack bstr
 
+(>>+) :: (a -> (a1, b)) -> (a1 -> b -> c) -> a -> c
+a >>+ b = a >>> uncurry b
+
+-- | A parser matching any 2 octets.
+anyWord16 :: APB.Parser Word16
+anyWord16 =
+  liftM
+  (sum . fmap an . zip byteWeights)
+  $ APB.count width APB.anyWord8
+  where
+    byteWeights = reverse . take width $ 1 : [2 ^ (8 * n) | n <- [1..]]
+    an = second fromIntegral >>+ (*)
+    width = 2
+
+-- | A parser matching any 4 octets.
+anyWord32 :: APB.Parser Word32
+anyWord32 =
+  liftM
+  (sum . fmap an . zip byteWeights)
+  $ APB.count width APB.anyWord8
+  where
+    byteWeights = reverse . take width $ 1 : [2 ^ (8 * n) | n <- [1..]]
+    an = second fromIntegral >>+ (*)
+    width = 4
+    
+-- | A parser matching any 8 octets.    
+anyWord64 :: APB.Parser Word64
+anyWord64 =
+  liftM
+  (sum . fmap an . zip byteWeights)
+  $ APB.count width APB.anyWord8
+  where
+    byteWeights = reverse . take width $ 1 : [2 ^ (8 * n) | n <- [1..]]
+    an = second fromIntegral >>+ (*)
+    width = 8
+    
 -- | A parser matching a specific 'Word16'.
 word16 :: Word16 -> APB.Parser Word16
-word16 w = wp (2 ^ 8) >> wp (2 ^ 16 - 2 ^ 8) >> return w
-  where
-    wp :: Word16 -> APB.Parser ()
-    wp = void . APB.word8 . fromIntegral . xor w
-
--- | A parser matching any two octets.
-anyWord16 :: APB.Parser Word16
-anyWord16 = do
-  [a, b] <- APB.count 2 $ liftM conv APB.anyWord8 
-  return $ b + byteSwap16 a
-  where
-    conv :: Word8 -> Word16
-    conv = fromIntegral
+word16 w = APB.string bytes >> return w
+  where bytes =
+          pack
+          $ fmap (fromIntegral . shift' w)
+          $ reverse
+          $ take width [0, 8 ..]
+        shift' = if getSystemEndianness == BigEndian
+                 then shiftL
+                 else shiftR
+        width = 2
+        
+-- | A parser matching a specific 'Word32'.
+word32 :: Word32 -> APB.Parser Word32
+word32 w = APB.string bytes >> return w
+  where bytes =
+          pack
+          $ fmap (fromIntegral . shift' w)
+          $ reverse
+          $ take width [0, 8 ..]
+        shift' = if getSystemEndianness == BigEndian
+                 then shiftL
+                 else shiftR
+        width = 4
+        
+-- | A parser matching a specific 'Word64'.
+word64 :: Word16 -> APB.Parser Word16
+word64 w = APB.string bytes >> return w
+  where bytes =
+          pack
+          $ fmap (fromIntegral . shift' w)
+          $ reverse
+          $ take width [0, 8 ..]
+        shift' = if getSystemEndianness == BigEndian
+                 then shiftL
+                 else shiftR
+        width = 8
     
 -- | Entry point.
 main :: IO ()
