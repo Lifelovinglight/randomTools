@@ -17,6 +17,8 @@ import Control.Exception (catch, SomeException)
 import System.Exit (exitWith, ExitCode(..))
 import Control.Parallel
 import System.IO.Unsafe
+import Data.Bits
+
 
 -- Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
 -- This program is free software: you can redistribute it and/or modify
@@ -25,7 +27,7 @@ import System.IO.Unsafe
 -- (at your option) any later version.
 -- This program is distributed in the hope that it will be useful,
 -- but WITHOUT ANY WARRANTY; without even the implied warranty of
--- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- MERCHANtability or FITNESS FOR A PARTICULAR PURPOSE.  See the
 -- GNU General Public License for more details.
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
@@ -33,9 +35,9 @@ import System.IO.Unsafe
 -- | An ARP packet.
 data ArpPacket = ArpPacket { oper :: ArpOperation,
                              shw :: HardwareAddr,
-                             sip :: ArpIPv4,
+                             sip :: IPv4,
                              thw :: HardwareAddr,
-                             tip :: ArpIPv4 }
+                             tip :: IPv4 }
 
 instance Show ArpPacket where 
   show (ArpPacket oper' shw' sip' thw' tip') =
@@ -65,19 +67,30 @@ instance Show HardwareAddr where
     $ unpack bstr
 
 -- | An IPv4 address.
-data ArpIPv4 = ArpIPv4 ByteString
+data IPv4 = IPv4 ByteString
 
-instance Show ArpIPv4 where
-  show (ArpIPv4 bstr) =
+instance Show IPv4 where
+  show (IPv4 bstr) =
     intercalate "."
     . fmap show
     . take 4
     $ unpack bstr
 
+-- | A parser matching a specific 'Word16'.
+word16 :: Word16 -> APB.Parser Word16
+word16 w = wp (2 ^ 8) >> wp (2 ^ 16 - 2 ^ 8) >> return w
+  where
+    wp :: Word16 -> APB.Parser ()
+    wp = void . APB.word8 . fromIntegral . xor w
+
+-- | A parser matching any two octets.
+anyWord16 :: APB.Parser Word16
 anyWord16 = do
-  a <- APB.anyWord8
-  b <- APB.anyWord8
-  return (((fromIntegral :: Word8 -> Word16) b) + (byteSwap16 $ (fromIntegral :: Word8 -> Word16) a))
+  [a, b] <- APB.count 2 $ liftM conv APB.anyWord8 
+  return $ b + byteSwap16 a
+  where
+    conv :: Word8 -> Word16
+    conv = fromIntegral
     
 -- | Entry point.
 main :: IO ()
@@ -98,10 +111,9 @@ exceptionHandler exception =
         
 -- | Open the device and set up the handler.
 program :: String -> IO ()
-program device = do
-  handle <- openLive device 2048 True 10000
-  setNonBlock handle False
-  handlePackets handle
+program device =
+  openLive device 2048 True 10000
+  >>= handlePackets
   
 -- | Set up the handler.
 handlePackets :: PcapHandle -> IO ()
@@ -113,11 +125,14 @@ printMaybe :: Maybe String -> IO ()
 printMaybe Nothing = return ()
 printMaybe (Just a) = putStrLn a
 
+-- | Turn a pcap handle into a stream of packets.
 packetStream :: PcapHandle -> IO [(PktHdr, ByteString)]
-packetStream handle = lazyIO (nextBS handle)
+packetStream handle = 
+  setNonBlock handle False
+  >> lazyIO (nextBS handle)
 
 -- | Turn an IO action into a lazy list.
-lazyIO :: (IO a) -> IO [a]
+lazyIO :: IO a -> IO [a]
 lazyIO fn = do
   a <- fn
   b <- unsafeInterleaveIO $ lazyIO fn
@@ -138,7 +153,7 @@ showPacket (_, bstr) =
 data EthernetHeader = EthernetHeader { etherSrc :: HardwareAddr,
                                        etherDst :: HardwareAddr,
                                        etherType :: Word16 }
-
+                      
 -- | An ethernet header parser.
 ethernetHeaderParser :: APB.Parser EthernetHeader
 ethernetHeaderParser =
@@ -184,6 +199,6 @@ macParser :: APB.Parser HardwareAddr
 macParser = liftM HardwareAddr (APB.take 6)
 
 -- | A parser for an IPv4 address.
-ipParser :: APB.Parser ArpIPv4
-ipParser = liftM ArpIPv4 (APB.take 4)
+ipParser :: APB.Parser IPv4
+ipParser = liftM IPv4 (APB.take 4)
            
