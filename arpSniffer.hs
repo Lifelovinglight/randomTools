@@ -49,7 +49,7 @@ instance Show ArpPacket where
              show tip']
 
 -- | A byte indicating the ARP operation.
-data ArpOperation = ArpOperation Word8
+data ArpOperation = ArpOperation Word16
 
 instance Show ArpOperation where
   show (ArpOperation 1) = "Q"
@@ -222,12 +222,15 @@ ethernetHeaderParser =
   `ap` macParser
   `ap` anyWord16
 
--- | A null parser that drops the 14-byte Ethernet header
-  -- and the ARP protocol, hardware type and address size fields.
+-- | A null parser that drops the ARP protocol,
+  -- hardware type and address size fields.
 arpHeaderParser :: APB.Parser ()
-arpHeaderParser = void $ APB.string arpHeader
-  where arpHeader :: ByteString
-        arpHeader = pack [0, 1, 8, 0, 6, 4, 0]
+arpHeaderParser =
+  void 
+  $ word16 1     -- ARP protocol number.
+  >> anyWord16   -- Hardware type.
+  >> APB.word8 6 -- Hardware address width.
+  >> APB.word8 4 -- IP address width.
 
 -- | A parser for an ARP packet.
 arpPacketParser :: APB.Parser ArpPacket
@@ -243,7 +246,7 @@ arpPacketParser =
   
 -- | A parser for an ARP operation.
 arpOperationParser :: APB.Parser ArpOperation
-arpOperationParser = liftM ArpOperation APB.anyWord8
+arpOperationParser = liftM ArpOperation anyWord16
     
 -- | Pad a string to a given length.
 padRight :: Int -> String -> String
