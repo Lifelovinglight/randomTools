@@ -34,20 +34,58 @@ import Control.Arrow
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 -- | An ARP packet.
-data ArpPacket = ArpPacket { oper :: ArpOperation,
+data ArpPacket = ArpPacket { arp :: ArpProtocolNumber,
+                             ahw :: ArpHardwareType,
+                             apt :: ArpProtocolType,
+                             hww :: ArpHardwareWidth,
+                             ipw :: ArpAddressWidth,
+                             oper :: ArpOperation,
                              shw :: HardwareAddr,
                              sip :: IPv4,
                              thw :: HardwareAddr,
                              tip :: IPv4 }
 
 instance Show ArpPacket where 
-  show (ArpPacket oper' shw' sip' thw' tip') =
-    unwords [show oper',
+  show (ArpPacket arp' ahw' apt' hww' ipw' oper' shw' sip' thw' tip') =
+    unwords [show arp',
+             show ahw',
+             show apt',
+             show hww',
+             show ipw',
+             show oper',
              show shw',
              show sip',
              show thw',
              show tip']
 
+data ArpProtocolNumber = ArpProtocolNumber Word16
+
+instance Show ArpProtocolNumber where
+  show (ArpProtocolNumber 2054) = "ARP"
+  show (ArpProtocolNumber n) = show n
+
+data ArpHardwareType = ArpHardwareType Word16
+
+instance Show ArpHardwareType where
+  show (ArpHardwareType 1) = "Ethernet"
+  show (ArpHardwareType n) = show n
+
+data ArpProtocolType = ArpProtocolType Word16
+
+instance Show ArpProtocolType where
+  show (ArpProtocolType 2048) = "IPv4"
+  show (ArpProtocolType n) = show n
+
+data ArpHardwareWidth = ArpHardwareWidth Word8
+
+instance Show ArpHardwareWidth where
+  show (ArpHardwareWidth n) = show n
+
+data ArpAddressWidth = ArpAddressWidth Word8
+
+instance Show ArpAddressWidth where
+  show (ArpAddressWidth n) = show n
+  
 -- | A byte indicating the ARP operation.
 data ArpOperation = ArpOperation Word16
 
@@ -84,7 +122,7 @@ a >>+ b = a >>> uncurry b
 anyWord16 :: APB.Parser Word16
 anyWord16 =
   liftM
-  (sum . fmap an . zip byteWeights)
+  (sum . map an . zip byteWeights)
   $ APB.count width APB.anyWord8
   where
     byteWeights = reverse . take width $ 1 : [2 ^ (8 * n) | n <- [1..]]
@@ -200,6 +238,7 @@ lazyIO fn = do
 
 -- | Lazy parallel map.
 parMap' :: (a -> b) -> [a] -> [b]
+parMap' _ [] = []
 parMap' fn (a:ax) = par an par au (an : au)
     where an = fn a
           au = parMap' fn ax
@@ -207,42 +246,61 @@ parMap' fn (a:ax) = par an par au (an : au)
 -- | Packet handler, called for every read packet.
 showPacket :: (PktHdr, ByteString) -> Maybe String
 showPacket (_, bstr) =
-  either (const Nothing) (Just . show) (APB.parseOnly arpPacketParser bstr)
+  either (const Nothing) (Just . show) (APB.parseOnly ethernetHeaderParser bstr)
 
 -- | An ethernet frame.
 data EthernetHeader = EthernetHeader { etherSrc :: HardwareAddr,
                                        etherDst :: HardwareAddr,
-                                       etherType :: Word16 }
-                      
+                                       etherPayload :: EthernetPayload }
+
+instance Show EthernetHeader where
+  show (EthernetHeader src' dst' payload') =
+    unwords [show src',
+             show dst',
+             show payload']
+    
+data EthernetPayload = EthernetArp ArpPacket
+
+instance Show EthernetPayload where
+  show (EthernetArp p) = show p
+                               
 -- | An ethernet header parser.
 ethernetHeaderParser :: APB.Parser EthernetHeader
 ethernetHeaderParser =
   return EthernetHeader
-  `ap` macParser
-  `ap` macParser
-  `ap` anyWord16
-
--- | A null parser that drops the ARP protocol,
-  -- hardware type and address size fields.
-arpHeaderParser :: APB.Parser ()
-arpHeaderParser =
-  void 
-  $ word16 1     -- ARP protocol number.
-  >> anyWord16   -- Hardware type.
-  >> APB.word8 6 -- Hardware address width.
-  >> APB.word8 4 -- IP address width.
-
+  `ap` macParser -- Source address.
+  `ap` macParser -- Destination address.
+  `ap` (liftM EthernetArp arpPacketParser)
+  
 -- | A parser for an ARP packet.
 arpPacketParser :: APB.Parser ArpPacket
 arpPacketParser =
-  ethernetHeaderParser
-  >> arpHeaderParser
-  >> return ArpPacket
-  `ap` arpOperationParser
-  `ap` macParser
-  `ap` ipParser
-  `ap` macParser
-  `ap` ipParser
+  return ArpPacket
+  `ap` arpProtocolNumberParser
+  `ap` arpHardwareTypeParser
+  `ap` arpProtocolTypeParser
+  `ap` arpHardwareWidthParser
+  `ap` arpAddressWidthParser
+  `ap` arpOperationParser -- ARP operation number.
+  `ap` macParser          -- Source hardware address.
+  `ap` ipParser           -- Source IPv4 address.
+  `ap` macParser          -- Destination hardware address.
+  `ap` ipParser          -- Destination IPv4 address.
+
+arpProtocolNumberParser :: APB.Parser ArpProtocolNumber
+arpProtocolNumberParser = liftM ArpProtocolNumber (word16 2054)
+
+arpHardwareTypeParser :: APB.Parser ArpHardwareType
+arpHardwareTypeParser = liftM ArpHardwareType anyWord16
+
+arpProtocolTypeParser :: APB.Parser ArpProtocolType
+arpProtocolTypeParser = liftM ArpProtocolType anyWord16
+
+arpHardwareWidthParser :: APB.Parser ArpHardwareWidth
+arpHardwareWidthParser = liftM ArpHardwareWidth APB.anyWord8
+
+arpAddressWidthParser :: APB.Parser ArpAddressWidth
+arpAddressWidthParser = liftM ArpAddressWidth APB.anyWord8
   
 -- | A parser for an ARP operation.
 arpOperationParser :: APB.Parser ArpOperation
