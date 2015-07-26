@@ -122,10 +122,13 @@ a >>+ b = a >>> uncurry b
 anyWord16 :: APB.Parser Word16
 anyWord16 =
   liftM
-  (sum . map an . zip byteWeights)
+  (sum . zipWith (curry an) byteWeights)
   $ APB.count width APB.anyWord8
   where
-    byteWeights = reverse . take width $ 1 : [2 ^ (8 * n) | n <- [1..]]
+    byteWeights =
+      reverse
+      . take width
+      $ 1 : [2 ^ (8 * n) | n <- [1..] :: [Word16]]
     an = second fromIntegral >>+ (*)
     width = 2
 
@@ -133,10 +136,13 @@ anyWord16 =
 anyWord32 :: APB.Parser Word32
 anyWord32 =
   liftM
-  (sum . fmap an . zip byteWeights)
+  (sum . zipWith (curry an) byteWeights)
   $ APB.count width APB.anyWord8
   where
-    byteWeights = reverse . take width $ 1 : [2 ^ (8 * n) | n <- [1..]]
+    byteWeights =
+      reverse
+      . take width
+      $ 1 : [2 ^ (8 * n) | n <- [1..] :: [Word32]]
     an = second fromIntegral >>+ (*)
     width = 4
     
@@ -144,10 +150,13 @@ anyWord32 =
 anyWord64 :: APB.Parser Word64
 anyWord64 =
   liftM
-  (sum . fmap an . zip byteWeights)
+  (sum . zipWith (curry an) byteWeights)
   $ APB.count width APB.anyWord8
   where
-    byteWeights = reverse . take width $ 1 : [2 ^ (8 * n) | n <- [1..]]
+    byteWeights =
+      reverse
+      . take width
+      $ 1 : [2 ^ (8 * n) | n <- [1..] :: [Word64]]
     an = second fromIntegral >>+ (*)
     width = 8
     
@@ -156,9 +165,10 @@ word16 :: Word16 -> APB.Parser Word16
 word16 w = APB.string bytes >> return w
   where bytes =
           pack
-          $ fmap (fromIntegral . shift' w)
-          $ reverse
-          $ take width [0, 8 ..]
+          . fmap (fromIntegral . shift' w)
+          . reverse
+          . take width
+          $ [0, 8 ..]
         shift' = if getSystemEndianness == BigEndian
                  then shiftL
                  else shiftR
@@ -169,9 +179,10 @@ word32 :: Word32 -> APB.Parser Word32
 word32 w = APB.string bytes >> return w
   where bytes =
           pack
-          $ fmap (fromIntegral . shift' w)
-          $ reverse
-          $ take width [0, 8 ..]
+          . fmap (fromIntegral . shift' w)
+          . reverse
+          . take width
+          $ [0, 8 ..]
         shift' = if getSystemEndianness == BigEndian
                  then shiftL
                  else shiftR
@@ -182,9 +193,10 @@ word64 :: Word16 -> APB.Parser Word16
 word64 w = APB.string bytes >> return w
   where bytes =
           pack
-          $ fmap (fromIntegral . shift' w)
-          $ reverse
-          $ take width [0, 8 ..]
+          . fmap (fromIntegral . shift' w)
+          . reverse
+          . take width
+          $ [0, 8 ..]
         shift' = if getSystemEndianness == BigEndian
                  then shiftL
                  else shiftR
@@ -249,9 +261,13 @@ showPacket (_, bstr) =
   either (const Nothing) (Just . show) (APB.parseOnly ethernetHeaderParser bstr)
 
 -- | An ethernet frame.
-data EthernetHeader = EthernetHeader { etherSrc :: HardwareAddr,
-                                       etherDst :: HardwareAddr,
-                                       etherPayload :: EthernetPayload }
+data EthernetHeader
+  = EthernetHeader
+    {
+      etherSrc :: HardwareAddr,
+      etherDst :: HardwareAddr,
+      etherPayload :: EthernetPayload
+    }
 
 instance Show EthernetHeader where
   show (EthernetHeader src' dst' payload') =
@@ -270,7 +286,7 @@ ethernetHeaderParser =
   return EthernetHeader
   `ap` macParser -- Source address.
   `ap` macParser -- Destination address.
-  `ap` (liftM EthernetArp arpPacketParser)
+  `ap` liftM EthernetArp arpPacketParser
   
 -- | A parser for an ARP packet.
 arpPacketParser :: APB.Parser ArpPacket
