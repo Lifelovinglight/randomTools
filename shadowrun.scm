@@ -271,8 +271,8 @@
 
 (define license
   (template
-   (license-type "civilian firearms")
-   (issuer "renraku")))
+   (license-type 'civilian firearms)
+   (issuer 'renraku)))
 
 (define wageslave
   (template
