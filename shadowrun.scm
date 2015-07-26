@@ -121,7 +121,8 @@
 		(templ-expr this-macro level rest)))
 	     ((_ this-macro level ((name value) . rest))
 	      (begin
-		(this-macro 'name value)
+		(this-macro 'name
+			    (if (symbol? 'value) 'value value))
 		(display ".")
 		(templ-expr this-macro level rest))))))
        (lambda argv
@@ -202,7 +203,7 @@
    (cyberware #t)
    (essence-cost 0.0)
    (cyberware-grade 1)
-   (cyberware-rating 'standard)))
+   (cyberware-rating standard)))
 
 (define datajack
   (template
@@ -211,7 +212,7 @@
 
 (define alphaware
   (template
-   (cyberware-grade 'alphaware)))
+   (cyberware-grade alphaware)))
 
 (define device
   (template
@@ -260,19 +261,19 @@
 
 (define system-identification-number
   (template
-   (sin-type 'corporate-born)
+   (sin-type corporate-born)
    (name "Yamada Taro")
    (genetic-data #nil)
-   (issuer 'renraku)
-   (ethnicity 'asian)
-   (hair 'black)
-   (meta 'human)
+   (issuer renraku)
+   (ethnicity asian)
+   (hair black)
+   (meta human)
    (licenses (list))))
 
 (define license
   (template
-   (license-type 'civilian-firearms)
-   (issuer 'renraku)))
+   (license-type civilian-firearms)
+   (issuer renraku)))
 
 (define wageslave
   (template
