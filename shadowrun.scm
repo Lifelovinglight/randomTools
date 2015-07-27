@@ -10,6 +10,8 @@
 ;;;; You should have received a copy of the GNU General Public License
 ;;;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+;;; --- Utility functions ---
+
 ;;; Fold function fn from init over ln.
 (define fold
   (lambda (init fn ln)
@@ -20,11 +22,39 @@
 		    (fold' fn (cdr ln) (fn r (car ln)))))))
       (fold' fn ln init))))
 
-;;; --- Dice roll related functions. ---
+;;; Create a division function.
+(define divider
+  (lambda (fn)
+    (lambda (e n)
+      (fn (/ e n)))))
+
+;;; Divide a number, rounding up.
+(define div-up (divider ceiling))
+
+;;; Divide a number, rounding down.
+(define div-down (divider floor))
+
+;;; Check a value against a type label.
+(define typecheck
+  (lambda (val type)
+    (let ((type-function
+	   (case type
+	     ((bool) boolean?)
+	     ((integer) integer?)
+	     ((float) float?)
+	     ((symbol) symbol?)
+	     ((list) list?)
+	     (else (error "unknown type")))))
+      (if (type-function val)
+	  #t
+	  (error "type error")))))
+
+;;; --- Dice roll related functions ---
 
 ;;; Roll n six-sided dice.
 (define d6
   (lambda (n)
+    (typecheck n 'integer)
     (map (lambda args
 	   (+ 1 (random 6)))
 	 (iota n))))
@@ -38,24 +68,82 @@
 ;;; Is this dice roll a success?
 (define success?
   (lambda (n)
+    (typecheck n 'integer)
     (>= n 5)))
 
 ;;; Is this dice roll a glitch?
 (define glitch?
   (lambda (n)
+    (typecheck n 'integer)
     (= n 1)))
 
-;;; Create a division function.
-(define divider
-  (lambda (fn)
-    (lambda (e n)
-      (fn (/ e n)))))
+;;; Roll a given SR5 dice pool with a limit
+;;; returning the number of successes, and
+;;; setting the glitch flag.
+(define roll
+  (lambda (pool limit)
+    (typecheck pool 'integer)
+    (typecheck limit 'integer)
+    (let ((dice (d6 pool)))
+      (if *show-rolls*
+	  (begin (display dice)
+		 (newline)))
+      (let ((result (length (filter success? dice))))
+	(set! *glitch*
+	  (if (> (length (filter glitch? dice))
+		 (/ pool 2))
+	      #t
+	      #f))
+	(if (>= result limit)
+	    limit
+	    result)))))
 
-;;; Divide a number, rounding up.
-(define div-up (divider ceiling))
+;;; SR5 success test.
+(define success-test
+  (lambda (pool limit threshold)
+    (typecheck pool 'integer)
+    (typecheck limit 'integer)
+    (typecheck threshold 'integer)
+    (let ((result (roll pool limit)))
+	    (if (>= result threshold)
+		#t
+		#f))))
 
-;;; Divide a number, rounding down.
-(define div-down (divider floor))1
+;;; SR5 opposed test
+(define opposed-test
+  (lambda (pool-attacker limit-attacker pool-defender limit-defender)
+    (typecheck pool-attacker 'integer)
+    (typecheck limit-attacker 'integer)
+    (typecheck pool-defender 'integer)
+    (typecheck limit-defender 'integer)
+    (let ((result-attacker (roll pool-attacker limit-attacker))
+	  (result-defender (roll pool-defender limit-defender)))
+      (max 0 (- result-attacker result-defender)))))
+
+;;; Predicate version of an SR5 opposed test
+;;; tie goes to the defender as per the corebook rules.
+(define opposed-test?
+  (lambda (pool-attacker limit-attacker pool-defender limit-defender)
+    (typecheck pool-attacker 'integer)
+    (typecheck limit-attacker 'integer)
+    (typecheck pool-defender 'integer)
+    (typecheck limit-defender 'integer)
+    (let ((attacker-successes (opposed-test
+			       pool-attacker limit-attacker
+			       pool-defender limit-defender)))
+      (if (zero? attacker-successes) #f #t))))
+
+;;; Calculate dice pool for an attribute and skill
+;;; defaulting if the skill isn't known.
+(define default
+  (lambda (attribute skill)
+    (typecheck attribute 'integer)
+    (typecheck skill 'integer)
+    (if (= 0 skill)
+	(- attribute 1)
+	(+ skill attribute))))
+
+;;; --- Randomness-related functions. ---
 
 (define range
   (lambda (from to)
@@ -79,57 +167,6 @@
 	(cons i l)
 	l)))
 
-;;; Roll a given SR5 dice pool with a limit
-;;; returning the number of successes, and
-;;; setting the glitch flag.
-(define roll
-  (lambda (pool limit)
-    (let ((dice (d6 pool)))
-      (if *show-rolls*
-	  (begin (display dice)
-		 (newline)))
-      (let ((result (length (filter success? dice))))
-	(set! *glitch*
-	  (if (> (length (filter glitch? dice))
-		 (/ pool 2))
-	      #t
-	      #f))
-	(if (>= result limit)
-	    limit
-	    result)))))
-
-;;; SR5 success test.
-(define success-test
-  (lambda (pool limit threshold)
-    (let ((result (roll pool limit)))
-	    (if (>= result threshold)
-		#t
-		#f))))
-
-;;; SR5 opposed test
-(define opposed-test
-  (lambda (pool-attacker limit-attacker pool-defender limit-defender)
-    (let ((result-attacker (roll pool-attacker limit-attacker))
-	  (result-defender (roll pool-defender limit-defender)))
-      (max 0 (- result-attacker result-defender)))))
-
-;;; Predicate version of an SR5 opposed test
-;;; tie goes to the defender as per the corebook rules.
-(define opposed-test?
-  (lambda (pool-attacker limit-attacker pool-defender limit-defender)
-    (let ((attacker-successes (opposed-test
-			       pool-attacker limit-attacker
-			       pool-defender limit-defender)))
-      (if (zero? attacker-successes) #f #t))))
-
-;;; Calculate dice pool for an attribute and skill
-;;; defaulting if the skill isn't known.
-(define default
-  (lambda (attribute skill)
-    (if (= 0 skill)
-	(- attribute 1)
-	(+ skill attribute))))
-
 ;;; --- Container related functions. ---
 
 ;;; Create a stored expression
@@ -144,21 +181,6 @@
   (lambda (t)
     (and (pair? t)
 	 (eq? 'srex (car t)))))
-
-;;; Check a value against a type label.
-(define typecheck
-  (lambda (val type)
-    (let ((type-function
-	   (case type
-	     ((bool) boolean?)
-	     ((integer) integer?)
-	     ((float) float?)
-	     ((symbol) symbol?)
-	     ((list) list?)
-	     (else (error "unknown type")))))
-      (if (type-function val)
-	  #t
-	  (error "type error")))))
 
 ;;; Cap a value v against the floor f and ceiling c.
 (define cap
@@ -251,7 +273,7 @@
 		(apply-template this-macro rest))))))
        (letrec-syntax
 	   ((templ-expr
-	     (syntax-rules (expression add sub div div-up div-down mul inheriting caps type)
+	     (syntax-rules (expression add sub div div-up div-down mul inheriting add-gear caps type)
 	       ((_ this-macro level ()) (begin (display "\n") this-macro))
 	       ((_ this-macro level ((inheriting . templates) . rest))
 		(begin
@@ -291,12 +313,12 @@
 		  (templ-expr this-macro level rest)))
 	       ((_ this-macro level ((name (type typeval)) . rest))
 		(begin
-		  (container-set-type this-macro 'name typeval)
+		  (this-macro 'container-operation-set-type 'name 'typeval)
 		  (display ".")
 		  (templ-expr this-macro level rest)))
 	       ((_ this-macro level ((name (caps floor ceiling)) . rest))
 		(begin
-		  (container-set-caps this-macro 'name floor ceiling)
+		  (this-macro 'container-operation-set-caps 'name floor ceiling)
 		  (display ".")
 		  (templ-expr this-macro level rest)))
 	       
@@ -324,13 +346,16 @@
        (t i)
        i)))
 
+;;; --- Templates ---
+
 (define metahuman
   (template
    (metahuman #t)
+   (bod (type integer))
    (bod (plus-minus 3 1))
    (bod (caps 0 #f))
    (str (plus-minus 3 1))
-   (bod (caps 0 #f))
+   (str (caps 0 #f))
    (qui (plus-minus 3 1))
    (qui (caps 0 #f))
    (rea (plus-minus 3 1))
