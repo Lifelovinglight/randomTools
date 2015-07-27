@@ -1,35 +1,87 @@
-;; Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
-;; This program is free software: you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-;; This program is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANtability or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; GNU General Public License for more details.
-;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;;;; Copyright Bo Victor Natanael Fors <krakow89@gmail.com>
+;;;; This program is free software: you can redistribute it and/or modify
+;;;; it under the terms of the GNU General Public License as published by
+;;;; the Free Software Foundation, either version 3 of the License, or
+;;;; (at your option) any later version.
+;;;; This program is distributed in the hope that it will be useful,
+;;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;;; MERCHANtability or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;;; GNU General Public License for more details.
+;;;; You should have received a copy of the GNU General Public License
+;;;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-(use-modules (srfi srfi-31))
+;;; Fold function fn from init over ln.
+(define fold
+  (lambda (init fn ln)
+    (letrec ((fold'
+	      (lambda (fn ln r)
+		(if (eq? (list) ln)
+		    r
+		    (fold' fn (cdr ln) (fn r (car ln)))))))
+      (fold' fn ln init))))
 
+;;; --- Dice roll related functions. ---
+
+;;; Roll n six-sided dice.
 (define d6
   (lambda (n)
     (map (lambda args
 	   (+ 1 (random 6)))
 	 (iota n))))
 
+;;; Show all rolls?
 (define *show-rolls* #f)
 
+;;; Was the last roll a glitch?
 (define *glitch* #f)
 
+;;; Is this dice roll a success?
 (define success?
   (lambda (n)
     (>= n 5)))
 
+;;; Is this dice roll a glitch?
 (define glitch?
   (lambda (n)
     (= n 1)))
 
+;;; Create a division function.
+(define divider
+  (lambda (fn)
+    (lambda (e n)
+      (fn (/ e n)))))
+
+;;; Divide a number, rounding up.
+(define div-up (divider ceiling))
+
+;;; Divide a number, rounding down.
+(define div-down (divider floor))1
+
+(define range
+  (lambda (from to)
+    (+ (random (- to (- from 1))) from)))
+
+(define plus-minus
+  (lambda (n v)
+    (+ (range (- v) v) n)))
+
+(define randomly
+  (lambda (n)
+    (if (< n 2)
+	#t
+	(if (= 1 (random n))
+	    #t
+	    #f))))
+
+(define add-one-in
+  (lambda (n i l)
+    (if (randomly n)
+	(cons i l)
+	l)))
+
+;;; Roll a given SR5 dice pool with a limit
+;;; returning the number of successes, and
+;;; setting the glitch flag.
 (define roll
   (lambda (pool limit)
     (let ((dice (d6 pool)))
@@ -46,6 +98,7 @@
 	    limit
 	    result)))))
 
+;;; SR5 success test.
 (define success-test
   (lambda (pool limit threshold)
     (let ((result (roll pool limit)))
@@ -53,53 +106,138 @@
 		#t
 		#f))))
 
+;;; SR5 opposed test
 (define opposed-test
   (lambda (pool-attacker limit-attacker pool-defender limit-defender)
     (let ((result-attacker (roll pool-attacker limit-attacker))
 	  (result-defender (roll pool-defender limit-defender)))
-      (if (> result-attacker result-defender)
-	  #t #f))))
+      (max 0 (- result-attacker result-defender)))))
 
+;;; Predicate version of an SR5 opposed test
+;;; tie goes to the defender as per the corebook rules.
+(define opposed-test?
+  (lambda (pool-attacker limit-attacker pool-defender limit-defender)
+    (let ((attacker-successes (opposed-test
+			       pool-attacker limit-attacker
+			       pool-defender limit-defender)))
+      (if (zero? attacker-successes) #f #t))))
+
+;;; Calculate dice pool for an attribute and skill
+;;; defaulting if the skill isn't known.
 (define default
   (lambda (attribute skill)
     (if (= 0 skill)
 	(- attribute 1)
 	(+ skill attribute))))
 
-(define srex
+;;; --- Container related functions. ---
+
+;;; Create a stored expression
+;;; when referenced in a container this will be called
+;;; on the container itself.
+(define stored-expression
   (lambda (fn)
     (cons 'srex fn)))
 
-(define srex?
+;;; Type predicate for a stored expression.
+(define stored-expression?
   (lambda (t)
     (and (pair? t)
 	 (eq? 'srex (car t)))))
 
+;;; Check a value against a type label.
+(define typecheck
+  (lambda (val type)
+    (let ((type-function
+	   (case type
+	     ((bool) boolean?)
+	     ((integer) integer?)
+	     ((float) float?)
+	     ((symbol) symbol?)
+	     ((list) list?)
+	     (else (error "unknown type")))))
+      (if (type-function val)
+	  #t
+	  (error "type error")))))
+
+;;; Cap a value v against the floor f and ceiling c.
+(define cap
+  (lambda (v f c)
+    ((lambda (v)
+       (if c (min v c) v))
+     (if f (max v f) v))))
+
+;;; A container to store values.
+;;; It supports typed values as well as floors and ceilings
+;;; for numerical types.
 (define container
   (lambda ()
-    (let ((hash-table (make-hash-table)))
+    (let ((hash-table (make-hash-table))     ; The table storing values.
+	  (type-table (make-hash-table))     ; The table storing types.
+	  (floor-table (make-hash-table))    ; The table storing numerical floor values.
+	  (ceiling-table (make-hash-table))) ; The table storing numerical ceiling values.
       (hash-set! hash-table 'container #t)
       (letrec ((this (lambda args
 		       (case (length args)
-			 ((1) (let ((result (hash-ref hash-table (car args) #f)))
-				(if (srex? result)
+			 ;; Reference a stored value.
+			 ((1) (letrec ((label (car args))
+				       (result (hash-ref hash-table label #f)))
+				(if (stored-expression? result)
 				    ((cdr result) this)
 				    result)))
-			 ((2) (hash-set! hash-table (car args) (cadr args)))
-			 (else (error))))))
+			 ;; Set a value.
+			 ((2) (letrec ((label (car args))
+				       (val (cadr args))
+				       (type (hash-ref type-table label))
+				       (floor (hash-ref floor-table label))
+				       (ceiling (hash-ref ceiling-table label)))
+				  (if type (typecheck val type))
+				  (hash-set! hash-table label
+					     (if (number? val)
+						 (cap val floor ceiling)
+						 val))))
+			 ((3) (begin
+				(let ((operation (car args)))
+				  (case operation
+				    ;; Set the type of a value.
+				    ((container-operation-set-type)
+				     (let ((label (cadr args))
+					   (type (caddr args)))
+				       (hash-set! type-table label type)))
+				    (else (error "unknown container operation"))))))
+			 ((4) (begin
+				(let ((operation (car args)))
+				  (case operation
+				    ;; Set the caps of a value.
+				    ((container-operation-set-caps)
+				     (let ((label (cadr args))
+					   (floor (caddr args))
+					   (ceiling (cadddr args)))
+				       (hash-set! floor-table label floor)
+				       (hash-set! ceiling-table label ceiling)))
+				    (else (error "unknown container-operation"))))))
+			 (else (error "wrong number of arguments to container"))))))
 	this))))
 
-(define divider
-  (lambda (fn)
-    (lambda (e n)
-      (fn (/ e n)))))
+;;; --- Container operations functions. ---
 
-(define div-up (divider ceiling))
+;;; Set the type t of a value v in the container c.
+(define container-set-type
+  (lambda (c v t)
+    (c 'container-operation-set-type v t)))
 
-(define div-down (divider floor))
+;;; Set the floor f and ceiling cl of a type v in the container c.
+(define container-set-caps
+  (lambda (c v f cl)
+    (c 'container-operation-set-caps v f cl)))
 
-(define *this* #nil)
+;;; --- Template related functions ---
 
+;;; A macro that creates a template function.
+;;; A template function takes zero to one arguments.
+;;; if provided with a container as an argument
+;;; it will apply itself to that container.
+;;; Else, it will just create a new instance of the template.
 (define-syntax template
   (syntax-rules ()
     ((_ exp ...)
@@ -113,7 +251,7 @@
 		(apply-template this-macro rest))))))
        (letrec-syntax
 	   ((templ-expr
-	     (syntax-rules (expression add sub div div-up div-down mul inheriting)
+	     (syntax-rules (expression add sub div div-up div-down mul inheriting caps type)
 	       ((_ this-macro level ()) (begin (display "\n") this-macro))
 	       ((_ this-macro level ((inheriting . templates) . rest))
 		(begin
@@ -121,7 +259,7 @@
 		  (templ-expr this-macro level rest)))
 	       ((_ this-macro level ((name (expression expr)) . rest))
 		(begin
-		  (this-macro 'name (cons 'srex expr))
+		  (this-macro 'name (stored-expression expr))
 		  (templ-expr this-macro level rest)))
 	       ((_ this-macro level ((name (add expr)) . rest))
 		(begin
@@ -151,6 +289,17 @@
 		(begin
 		  (this-macro 'name (append (this-macro 'name) (gear-list expr)))
 		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (type typeval)) . rest))
+		(begin
+		  (container-set-type this-macro 'name typeval)
+		  (display ".")
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (caps floor ceiling)) . rest))
+		(begin
+		  (container-set-caps this-macro 'name floor ceiling)
+		  (display ".")
+		  (templ-expr this-macro level rest)))
+	       
 	       ((_ this-macro level ((name value) . rest))
 		(begin
 		  (this-macro 'name
@@ -161,37 +310,6 @@
 	   (let ((this-macro (if (eq? (list) argv) (container) (car argv))))
 	     (display "initializing template\n")
 	     (templ-expr this-macro level (exp ...)))))))))
-
-  (define range
-    (lambda (from to)
-      (+ (random (- to (- from 1))) from)))
-
-(define plus-minus
-  (lambda (n v)
-    (+ (range (- v) v) n)))
-
-(define randomly
-  (lambda (n)
-    (if (< n 2)
-	#t
-	(if (= 1 (random n))
-	    #t
-	    #f))))
-
-(define add-one-in
-  (lambda (n i l)
-    (if (randomly n)
-	(cons i l)
-	l)))
-
-(define fold
-  (lambda (init fn ln)
-    (letrec ((fold'
-	      (lambda (fn ln r)
-		(if (eq? (list) ln)
-		    r
-		    (fold' fn (cdr ln) (fn r (car ln)))))))
-      (fold' fn ln init))))
   
 (define gear-list
   (lambda (ln)
@@ -210,13 +328,21 @@
   (template
    (metahuman #t)
    (bod (plus-minus 3 1))
+   (bod (caps 0 #f))
    (str (plus-minus 3 1))
+   (bod (caps 0 #f))
    (qui (plus-minus 3 1))
+   (qui (caps 0 #f))
    (rea (plus-minus 3 1))
+   (rea (caps 0 #f))
    (int (plus-minus 3 1))
+   (int (caps 0 #f))
    (log (plus-minus 3 1))
+   (log (caps 0 #f))
    (wil (plus-minus 3 1))
+   (wil (caps 0 #f))
    (cha (plus-minus 3 1))
+   (cha (caps 0 #f))
    (physical-wound-track 0)
    (stun-wound-track 0)
    (mental-limit
@@ -327,12 +453,29 @@
 (define license
   (template
    (license-type civilian-firearms)
-   (issuer renraku)))
+   (issuer renraku)))	    
 
 (define wageslave
   (template (inheriting metahuman)
    (log (add (range 0 1)))
    (cha (add (range 0 1)))
    (cyberware (add-gear
-	       (list (cons 2 (one-in-template
-			      2 alphaware (datajack))))))))
+	       (list
+		(cons 2 (one-in-template
+			 2 alphaware (datajack))))))))
+
+(define mage
+  (template
+   (magic 3)
+   (magic (caps 0 #f))
+   (tradition hermetic)
+   (conjuring (range 0 3))
+   (spellcasting (range 0 3))
+   (aura-reading (range 0 3))
+   (arcana (range 0 3))
+   (banishing (range 0 3))
+   (initiation (range 0 1))
+   (log (add (range 1 2)))
+   (wil (add (range 1 2)))
+   (bound-spirits (list))
+   (known-spells (list))))
