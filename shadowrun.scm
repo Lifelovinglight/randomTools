@@ -104,35 +104,67 @@
   (syntax-rules ()
     ((_ exp ...)
      (letrec-syntax
-	 ((templ-expr
-	   (syntax-rules (expression add)
-	     ((_ this-macro level ()) (begin (display "\n") this-macro))
-	     ((_ this-macro level ((name (expression expr)) . rest))
+	 ((apply-template
+	   (syntax-rules ()
+	     ((_ this-macro ()) this-macro)
+	     ((_ this-macro (template . rest))
 	      (begin
-		(this-macro 'name (cons 'srex expr))
-		(templ-expr this-macro level rest)))
-	     ((_ this-macro level ((name (add expr)) . rest))
-	      (begin
-		(this-macro 'name (+ (this-macro 'name) expr))
-		(templ-expr this-macro level rest)))
-	     ((_ this-macro level ((name (add-gear expr)) . rest))
-	      (begin
-		(this-macro 'name (append (this-macro 'name) (gear-list expr)))
-		(templ-expr this-macro level rest)))
-	     ((_ this-macro level ((name value) . rest))
-	      (begin
-		(this-macro 'name
-			    (if (symbol? 'value) 'value value))
-		(display ".")
-		(templ-expr this-macro level rest))))))
-       (lambda argv
-	 (let ((this-macro (if (eq? (list) argv) (container) (car argv))))
-	   (display "initializing template\n")
-	   (templ-expr this-macro level (exp ...))))))))
+		(template this-macro)
+		(apply-template this-macro rest))))))
+       (letrec-syntax
+	   ((templ-expr
+	     (syntax-rules (expression add sub div div-up div-down mul inheriting)
+	       ((_ this-macro level ()) (begin (display "\n") this-macro))
+	       ((_ this-macro level ((inheriting . templates) . rest))
+		(begin
+		  (apply-template this-macro templates)
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (expression expr)) . rest))
+		(begin
+		  (this-macro 'name (cons 'srex expr))
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (add expr)) . rest))
+		(begin
+		  (this-macro 'name (+ (this-macro 'name) expr))
+		  (templ-expr this-macro level rest)))	     
+	       ((_ this-macro level ((name (sub expr)) . rest))
+		(begin
+		  (this-macro 'name (- (this-macro 'name) expr))
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (div expr)) . rest))
+		(begin
+		  (this-macro 'name (/ (this-macro 'name) expr))
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (div-up expr)) . rest))
+		(begin
+		  (this-macro 'name (div-up (this-macro 'name) expr))
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (div-down expr)) . rest))
+		(begin
+		  (this-macro 'name (div-down (this-macro 'name) expr))
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (mul expr)) . rest))
+		(begin
+		  (this-macro 'name (* (this-macro 'name) expr))
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name (add-gear expr)) . rest))
+		(begin
+		  (this-macro 'name (append (this-macro 'name) (gear-list expr)))
+		  (templ-expr this-macro level rest)))
+	       ((_ this-macro level ((name value) . rest))
+		(begin
+		  (this-macro 'name
+			      (if (symbol? 'value) 'value value))
+		  (display ".")
+		  (templ-expr this-macro level rest))))))
+	 (lambda argv
+	   (let ((this-macro (if (eq? (list) argv) (container) (car argv))))
+	     (display "initializing template\n")
+	     (templ-expr this-macro level (exp ...)))))))))
 
-(define range
-  (lambda (from to)
-    (+ (random (- to (- from 1))) from)))
+  (define range
+    (lambda (from to)
+      (+ (random (- to (- from 1))) from)))
 
 (define plus-minus
   (lambda (n v)
@@ -199,29 +231,52 @@
    (genes (new-genes))))
 
 (define cyberware
-  (template
+  (template (inheriting device)
    (cyberware #t)
    (essence-cost 0.0)
-   (cyberware-grade 1)
-   (cyberware-rating standard)))
+   (cyberware-rating standard)
+   (location torso)
+   (visible #f)))
 
 (define datajack
-  (template
+  (template (inheriting cyberware)
    (datajack #t)
-   (essence-cost 0.1)))
+   (essence-cost 0.1)
+   (location head)
+   (visible #t)))
 
 (define alphaware
   (template
-   (cyberware-grade alphaware)))
+   (cyberware-grade alphaware)
+   (essence-cost (div 2))
+   (availability (add 2))
+   (price (mul 2))))
+
+(define cyberlimb
+  (template (inheriting cyberware)
+   (cyberlimb #t)
+   (cyberware-location right-arm)
+   (str 3)
+   (bod 3)
+   (qui 3)
+   (essence-cost 1.0)
+   (visible #f)))
 
 (define device
+  (template (inheriting gear)
+   (device #t)
+   (rating 1)))
+
+(define gear
   (template
-   (device-rating 1)))
+   (availability 10)
+   (legality legal)
+   (price 10)))
 
 (define cyberdeck
-  (template
+  (template (inheriting device)
    (cyberdeck #t)
-   (device-rating 3)
+   (rating 3)
    (sleaze 6)
    (attack 5)
    (firewall 4)
@@ -266,7 +321,6 @@
    (genetic-data #nil)
    (issuer renraku)
    (ethnicity asian)
-   (hair black)
    (meta human)
    (licenses (list))))
 
@@ -276,9 +330,9 @@
    (issuer renraku)))
 
 (define wageslave
-  (template
+  (template (inheriting metahuman)
    (log (add (range 0 1)))
    (cha (add (range 0 1)))
    (cyberware (add-gear
 	       (list (cons 2 (one-in-template
-			      2 alphaware (datajack (cyberware)))))))))
+			      2 alphaware (datajack))))))))
