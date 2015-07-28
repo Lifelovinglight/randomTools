@@ -5,7 +5,7 @@
 ;;;; (at your option) any later version.
 ;;;; This program is distributed in the hope that it will be useful,
 ;;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;;;; MERCHANtability or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;;;; GNU General Public License for more details.
 ;;;; You should have received a copy of the GNU General Public License
 ;;;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
@@ -48,6 +48,15 @@
       (if (type-function val)
 	  #t
 	  (error "type error")))))
+
+;;; Does ln contain the value n?
+(define in-list
+  (lambda (n ln)
+    (if (eq? (list) ln)
+	#f
+	(if (eq? n (car ln))
+	    #t
+	    (in-list n (cdr ln))))))
 
 ;;; --- Dice roll related functions ---
 
@@ -145,14 +154,17 @@
 
 ;;; --- Randomness-related functions. ---
 
+;;; Return an integer in the range from to to.
 (define range
   (lambda (from to)
     (+ (random (- to (- from 1))) from)))
 
+;;; Return a value around n varied by v.
 (define plus-minus
   (lambda (n v)
     (+ (range (- v) v) n)))
 
+;;; Return t with a probability of 1 in n.
 (define randomly
   (lambda (n)
     (if (< n 2)
@@ -161,6 +173,7 @@
 	    #t
 	    #f))))
 
+;;; Add i to l with a probability of 1 in n.
 (define add-one-in
   (lambda (n i l)
     (if (randomly n)
@@ -196,62 +209,52 @@
   (lambda ()
     (let ((hash-table (make-hash-table))     ; The table storing values.
 	  (type-table (make-hash-table))     ; The table storing types.
-	  (floor-table (make-hash-table))    ; The table storing numerical floor values.
-	  (ceiling-table (make-hash-table))) ; The table storing numerical ceiling values.
+	  (floor-table (make-hash-table))    ; The table of floor values.
+	  (ceiling-table (make-hash-table))) ; The table of ceiling values.
       (hash-set! hash-table 'container #t)
-      (letrec ((this (lambda args
-		       (case (length args)
-			 ;; Reference a stored value.
-			 ((1) (letrec ((label (car args))
-				       (result (hash-ref hash-table label #f)))
-				(if (stored-expression? result)
-				    ((cdr result) this)
-				    result)))
-			 ;; Set a value.
-			 ((2) (letrec ((label (car args))
-				       (val (cadr args))
-				       (type (hash-ref type-table label))
-				       (floor (hash-ref floor-table label))
-				       (ceiling (hash-ref ceiling-table label)))
-				  (if type (typecheck val type))
-				  (hash-set! hash-table label
-					     (if (number? val)
-						 (cap val floor ceiling)
-						 val))))
-			 ((3) (begin
-				(let ((operation (car args)))
-				  (case operation
-				    ;; Set the type of a value.
-				    ((container-operation-set-type)
-				     (let ((label (cadr args))
-					   (type (caddr args)))
-				       (hash-set! type-table label type)))
-				    (else (error "unknown container operation"))))))
-			 ((4) (begin
-				(let ((operation (car args)))
-				  (case operation
-				    ;; Set the caps of a value.
-				    ((container-operation-set-caps)
-				     (let ((label (cadr args))
-					   (floor (caddr args))
-					   (ceiling (cadddr args)))
-				       (hash-set! floor-table label floor)
-				       (hash-set! ceiling-table label ceiling)))
-				    (else (error "unknown container-operation"))))))
-			 (else (error "wrong number of arguments to container"))))))
+      (letrec
+	  ((this
+	    (lambda args
+	      (case (length args)
+		;; Reference a stored value.
+		((1) (letrec ((label (car args))
+			      (result (hash-ref hash-table label #f)))
+		       (if (stored-expression? result)
+			   ((cdr result) this)
+			   result)))
+		;; Set a value.
+		((2) (letrec ((label (car args))
+			      (val (cadr args))
+			      (type (hash-ref type-table label))
+			      (floor (hash-ref floor-table label))
+			      (ceiling (hash-ref ceiling-table label)))
+		       (if type (typecheck val type))
+		       (hash-set! hash-table label
+				  (if (number? val)
+				      (cap val floor ceiling)
+				      val))))
+		((3) (begin
+		       (let ((operation (car args)))
+			 (case operation
+			   ;; Set the type of a value.
+			   ((container-operation-set-type)
+			    (let ((label (cadr args))
+				  (type (caddr args)))
+			      (hash-set! type-table label type)))
+			   (else (error "unknown container operation"))))))
+		((4) (begin
+		       (let ((operation (car args)))
+			 (case operation
+			   ;; Set the caps of a value.
+			   ((container-operation-set-caps)
+			    (let ((label (cadr args))
+				  (floor (caddr args))
+				  (ceiling (cadddr args)))
+			      (hash-set! floor-table label floor)
+			      (hash-set! ceiling-table label ceiling)))
+			   (else (error "unknown container-operation"))))))
+		(else (error "wrong number of arguments to container"))))))
 	this))))
-
-;;; --- Container operations functions. ---
-
-;;; Set the type t of a value v in the container c.
-(define container-set-type
-  (lambda (c v t)
-    (c 'container-operation-set-type v t)))
-
-;;; Set the floor f and ceiling cl of a type v in the container c.
-(define container-set-caps
-  (lambda (c v f cl)
-    (c 'container-operation-set-caps v f cl)))
 
 ;;; --- Template related functions ---
 
@@ -273,55 +276,69 @@
 		(apply-template this-macro rest))))))
        (letrec-syntax
 	   ((templ-expr
-	     (syntax-rules (expression add sub div div-up div-down mul inheriting add-gear caps type)
+	     (syntax-rules (expression add sub div div-up div-down
+				       mul inheriting add-gear caps type)
 	       ((_ this-macro level ()) (begin (display "\n") this-macro))
+	       ;; Handle inheritance.
 	       ((_ this-macro level ((inheriting . templates) . rest))
 		(begin
 		  (apply-template this-macro templates)
 		  (templ-expr this-macro level rest)))
+	       ;; Handle stored expressions.
 	       ((_ this-macro level ((name (expression expr)) . rest))
 		(begin
 		  (this-macro 'name (stored-expression expr))
 		  (templ-expr this-macro level rest)))
+	       ;; Add a value to the inherited value.
 	       ((_ this-macro level ((name (add expr)) . rest))
 		(begin
 		  (this-macro 'name (+ (this-macro 'name) expr))
-		  (templ-expr this-macro level rest)))	     
+		  (templ-expr this-macro level rest)))
+	       ;; Subtract a value from the inherited value.
 	       ((_ this-macro level ((name (sub expr)) . rest))
 		(begin
 		  (this-macro 'name (- (this-macro 'name) expr))
 		  (templ-expr this-macro level rest)))
+	       ;; Divide the inherited value by a value.
 	       ((_ this-macro level ((name (div expr)) . rest))
 		(begin
 		  (this-macro 'name (/ (this-macro 'name) expr))
 		  (templ-expr this-macro level rest)))
+	       ;; Divide while rounding up the inherited value by a value.
 	       ((_ this-macro level ((name (div-up expr)) . rest))
 		(begin
 		  (this-macro 'name (div-up (this-macro 'name) expr))
 		  (templ-expr this-macro level rest)))
+	       ;; Divide while rounding down the inherited value by a value.
 	       ((_ this-macro level ((name (div-down expr)) . rest))
 		(begin
 		  (this-macro 'name (div-down (this-macro 'name) expr))
 		  (templ-expr this-macro level rest)))
+	       ;; Multiply the inherited value by a value.
 	       ((_ this-macro level ((name (mul expr)) . rest))
 		(begin
 		  (this-macro 'name (* (this-macro 'name) expr))
 		  (templ-expr this-macro level rest)))
+	       ;; Add a value to a list by a factor of one in n
+	       ;; the argument is an association list shaped like (n . value).
 	       ((_ this-macro level ((name (add-gear expr)) . rest))
 		(begin
-		  (this-macro 'name (append (this-macro 'name) (gear-list expr)))
+		  (this-macro 'name (append (this-macro 'name)
+					    (gear-list expr)))
 		  (templ-expr this-macro level rest)))
+	       ;; Set the type of a value.
 	       ((_ this-macro level ((name (type typeval)) . rest))
 		(begin
 		  (this-macro 'container-operation-set-type 'name 'typeval)
 		  (display ".")
 		  (templ-expr this-macro level rest)))
+	       ;; Set the caps of a value.
 	       ((_ this-macro level ((name (caps floor ceiling)) . rest))
 		(begin
 		  (this-macro 'container-operation-set-caps 'name floor ceiling)
 		  (display ".")
 		  (templ-expr this-macro level rest)))
-	       
+	       ;; Set a value.
 	       ((_ this-macro level ((name value) . rest))
 		(begin
 		  (this-macro 'name
@@ -332,7 +349,9 @@
 	   (let ((this-macro (if (eq? (list) argv) (container) (car argv))))
 	     (display "initializing template\n")
 	     (templ-expr this-macro level (exp ...)))))))))
-  
+
+;;; Function to handle the add-gear
+;;; part of the template macro.
 (define gear-list
   (lambda (ln)
     (fold (list)
@@ -340,6 +359,8 @@
 	    (add-one-in (car v) (cdr v) l))
 	  ln)))
 
+;;; Apply a template t to i
+;;; with a probability of one in n.
 (define one-in-template
  (lambda (n t i)
    (if (randomly n)
@@ -348,35 +369,38 @@
 
 ;;; --- Templates ---
 
+;;; The basic metahuman template
+;;; this is also the "human" template.
 (define metahuman
   (template
    (metahuman #t)
-   (bod (type integer))
-   (bod (plus-minus 3 1))
-   (bod (caps 0 #f))
-   (str (plus-minus 3 1))
-   (str (caps 0 #f))
-   (qui (plus-minus 3 1))
-   (qui (caps 0 #f))
-   (rea (plus-minus 3 1))
-   (rea (caps 0 #f))
-   (int (plus-minus 3 1))
-   (int (caps 0 #f))
-   (log (plus-minus 3 1))
-   (log (caps 0 #f))
-   (wil (plus-minus 3 1))
-   (wil (caps 0 #f))
-   (cha (plus-minus 3 1))
-   (cha (caps 0 #f))
+   (meta human)
+   (base-bod (type integer))
+   (base-bod (plus-minus 3 1))
+   (base-bod (caps 0 6))
+   (base-str (plus-minus 3 1))
+   (base-str (caps 0 6))
+   (base-qui (plus-minus 3 1))
+   (base-qui (caps 0 6))
+   (base-rea (plus-minus 3 1))
+   (base-rea (caps 0 6))
+   (base-int (plus-minus 3 1))
+   (base-int (caps 0 6))
+   (base-log (plus-minus 3 1))
+   (base-log (caps 0 6))
+   (base-wil (plus-minus 3 1))
+   (base-wil (caps 0 6))
+   (base-cha (plus-minus 3 1))
+   (base-cha (caps 0 6))
    (physical-wound-track 0)
    (stun-wound-track 0)
    (mental-limit
     (expression
      (lambda (this)
        (div-up
-	(+ (* 3 (this 'log))
-	   (this 'wil)
-	   (this 'int)) 3))))
+	(+ (* 3 (this 'base-log))
+	   (this 'base-wil)
+	   (this 'base-int)) 3))))
    (inventory (list))
    (cyberware (list))
    (genes (new-genes))))
@@ -384,7 +408,17 @@
 (define cyberware
   (template (inheriting device)
    (cyberware #t)
-   (essence-cost 0.0)
+   (base-essence-cost 0.0)
+   (essence-cost
+    (expression
+     (lambda (this)
+       (* (this 'base-essence-cost)
+	  (case (this 'cyberware-rating)
+	    ((used) 1.2)
+	    ((standard) 1)
+	    ((alphaware) 0.8)
+	    ((betaware) 0.6)
+	    ((deltaware) 0.5))))))
    (cyberware-rating standard)
    (location torso)
    (visible #f)))
@@ -433,14 +467,6 @@
    (firewall 4)
    (data-processing 3)))
 
-(define in-list
-  (lambda (n ln)
-    (if (eq? (list) ln)
-	#f
-	(if (eq? n (car ln))
-	    #t
-	    (in-list n (cdr ln))))))
-
 (define configure-cyberdeck
   (lambda (device one two three four)
     (let ((ratings '(data-processing firewall sleaze attack)))
@@ -482,8 +508,8 @@
 
 (define wageslave
   (template (inheriting metahuman)
-   (log (add (range 0 1)))
-   (cha (add (range 0 1)))
+   (base-log (add (range 0 1)))
+   (base-cha (add (range 0 1)))
    (cyberware (add-gear
 	       (list
 		(cons 2 (one-in-template
