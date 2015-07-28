@@ -58,6 +58,20 @@
 	    #t
 	    (in-list n (cdr ln))))))
 
+;;; Are the elements in the list ln unique?
+(define uniq?
+  (lambda (ln)
+    (letrec
+	((uniq?'
+	  (lambda (r ln)
+	    (if (eq? (list) ln)
+		#t
+		(let ((comb (append ln r)))
+		  (if (in-list (car comb) (cdr comb))
+		      #f
+		      (uniq?' (cons (car ln) r) (cdr ln))))))))
+      (uniq?' (list) ln))))
+
 ;;; --- Dice roll related functions ---
 
 ;;; Roll n six-sided dice.
@@ -376,22 +390,29 @@
    (metahuman #t)
    (meta human)
    (base-bod (type integer))
-   (base-bod (plus-minus 3 1))
    (base-bod (caps 0 6))
-   (base-str (plus-minus 3 1))
+   (base-bod (plus-minus 3 1))
+   (base-str (type integer))
    (base-str (caps 0 6))
-   (base-qui (plus-minus 3 1))
-   (base-qui (caps 0 6))
-   (base-rea (plus-minus 3 1))
+   (base-str (plus-minus 3 1))
+   (base-rea (type integer))
    (base-rea (caps 0 6))
-   (base-int (plus-minus 3 1))
-   (base-int (caps 0 6))
-   (base-log (plus-minus 3 1))
+   (base-rea (plus-minus 3 1))
+   (base-qui (type integer))
+   (base-qui (caps 0 6))
+   (base-qui (plus-minus 3 1))
+   (base-log (type integer))
    (base-log (caps 0 6))
-   (base-wil (plus-minus 3 1))
-   (base-wil (caps 0 6))
-   (base-cha (plus-minus 3 1))
+   (base-log (plus-minus 3 1))
+   (base-int (type integer))
+   (base-int (caps 0 6))
+   (base-int (plus-minus 3 1))
+   (base-cha (type integer))
    (base-cha (caps 0 6))
+   (base-cha (plus-minus 3 1))
+   (base-wil (type integer))
+   (base-wil (caps 0 6))
+   (base-wil (plus-minus 3 1))
    (physical-wound-track 0)
    (stun-wound-track 0)
    (mental-limit
@@ -426,24 +447,17 @@
 (define datajack
   (template (inheriting cyberware)
    (datajack #t)
-   (essence-cost 0.1)
+   (base-essence-cost 0.1)
    (location head)
    (visible #t)))
-
-(define alphaware
-  (template
-   (cyberware-grade alphaware)
-   (essence-cost (div 2))
-   (availability (add 2))
-   (price (mul 2))))
 
 (define cyberlimb
   (template (inheriting cyberware)
    (cyberlimb #t)
    (cyberware-location right-arm)
-   (str 3)
-   (bod 3)
-   (qui 3)
+   (base-str 3)
+   (base-bod 3)
+   (base-qui 3)
    (essence-cost 1.0)
    (visible #f)))
 
@@ -474,7 +488,8 @@
 	       (in-list one ratings)
 	       (in-list two ratings)
 	       (in-list three ratings)
-	       (in-list four ratings))
+	       (in-list four ratings)
+	       (uniq? (list one two three four)))
 	  (let ((rating (device 'device-rating)))
 	    (device one (+ 3 rating))
 	    (device two (+ 2 rating))
