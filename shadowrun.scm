@@ -33,6 +33,20 @@
 ;;; Divide a number, rounding down.
 (define div-down (divider floor))
 
+;;; Convenience macro used to define association lists
+;;; resolves the second argument in the pair but not the first.
+(define-syntax symbol-list
+  (syntax-rules ()
+     ((_ ln)
+      (letrec-syntax
+	  ((symbol-listp
+	    (syntax-rules ()
+	      ((_ ()) '())
+	      ((_ ((k v) . rest))
+	       (cons (cons 'k v)
+		     (symbol-listp rest))))))
+	(symbol-listp ln)))))
+
 ;;; A hash table of type symbols and predicates.
 (define *types*
   (fold (make-hash-table)
@@ -40,15 +54,15 @@
 	  (begin
 	    (hash-set! t (car kv) (cdr kv))
 	    t))
-        (list
-	 (cons 'bool boolean?)
-	 (cons 'integer integer?)
-	 (cons 'number number?)
-	 (cons 'rational rational?)
-	 (cons 'complex complex?)
-	 (cons 'real real?)
-	 (cons 'symbol symbol?)
-	 (cons 'list list?))))
+        (symbol-list
+	 ((bool boolean?)
+	  (integer integer?)
+	  (number number?)
+	  (rational rational?)
+	  (complex complex?)
+	  (real real?)
+	  (symbol symbol?)
+	  (list list?)))))
 
 ;;; Check a value against a type label.
 (define typecheck
