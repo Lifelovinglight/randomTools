@@ -33,17 +33,31 @@
 ;;; Divide a number, rounding down.
 (define div-down (divider floor))
 
+(define *types*
+  (fold (make-hash-table)
+	(lambda (t kv)
+	  (begin
+	    (hash-set! t (car kv) (cdr kv))
+	    t))
+        (list
+	 (cons 'bool boolean?)
+	 (cons 'integer integer?)
+	 (cons 'number number?)
+	 (cons 'rational rational?)
+	 (cons 'complex complex?)
+	 (cons 'real real?)
+	 (cons 'symbol symbol?)
+	 (cons 'list list?))))
+
 ;;; Check a value against a type label.
 (define typecheck
   (lambda (val type)
     (let ((type-function
-	   (case type
-	     ((bool) boolean?)
-	     ((integer) integer?)
-	     ((float) float?)
-	     ((symbol) symbol?)
-	     ((list) list?)
-	     (else (error "unknown type")))))
+	   (hash-ref *types* type
+		     (lambda args
+		       (error (string-append
+			       "unknown type: "
+			       (format #nil "~a" type)))))))
       (if (type-function val)
 	  #t
 	  (error (string-append "type error: "
