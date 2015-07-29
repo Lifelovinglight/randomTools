@@ -51,13 +51,19 @@
 				" is not of type "
 				(format #nil "~a" type)))))))
 
-;;; A macro that defines lambda expressions that perform type
-;;; checking before running the function body.
+;;; A macro that defines lambda expressions that optionally
+;;; perform type checking before running the function body.
 (define-macro
   (typed-lambda args . rest)
-  `(lambda ,(map car args)
-     (map typecheck (list ,@(map car args)) ',(map cadr args))
-     ,@rest))
+  (let ((formal-args (map (lambda (n)
+			    (if (pair? n)
+				(car n)
+				n))
+			  args))
+	(typed-args (filter pair? args)))
+    `(lambda ,formal-args
+       (map typecheck (list ,@(map car typed-args)) ',(map cadr typed-args))
+       ,@rest)))
 
 ;;; Does ln contain the value n?
 (define in-list
@@ -187,7 +193,7 @@
 
 ;;; Add i to l with a probability of 1 in n.
 (define add-one-in
-  (lambda (n i l)
+  (typed-lambda ((n integer) i (l list))
     (if (randomly n)
 	(cons i l)
 	l)))
