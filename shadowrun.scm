@@ -33,6 +33,15 @@
 ;;; Divide a number, rounding down.
 (define div-down (divider floor))
 
+;;; Create a unique number incrementing from init
+(define unique-counter
+ (typed-lambda ((init integer))
+   (lambda ()
+     (begin
+       (set! init (+ 1 init))
+       (- init 1)))))
+		 
+
 ;;; Convenience macro used to define association lists
 ;;; resolves the second argument in the pair but not the first.
 (define-syntax symbol-list
@@ -324,7 +333,8 @@
        (letrec-syntax
 	   ((templ-expr
 	     (syntax-rules (expression add sub div div-up div-down
-				       mul inheriting add-gear caps type)
+				       mul inheriting add-gear caps type
+				       transform)
 	       ((_ this-macro level ()) (begin (display "\n") this-macro))
 	       ;; Handle inheritance.
 	       ((_ this-macro level ((inheriting . templates) . rest))
@@ -385,6 +395,11 @@
 		  (this-macro 'container-operation-set-caps 'name floor ceiling)
 		  (display ".")
 		  (templ-expr this-macro level rest)))
+	       ;; Directly transform the container using a function.
+	       ((_ this-macro level ((transform fn) . rest))
+		(begin
+		  (fn this-macro)
+		  (templ-expr this-macro level rest)))
 	       ;; Set a value.
 	       ((_ this-macro level ((name value) . rest))
 		(begin
@@ -414,40 +429,50 @@
        (t i)
        i)))
 
+;;; Modify the attributes of a metahuman template.
+(define metahuman-attributes
+  (typed-lambda ((bod integer) (str integer) (rea integer) (agi integer)
+	         (cha integer) (log integer) (int integer) (wil integer))
+    (let ((attribute-caps (list bod str rea agi
+				cha log int wil)))
+      (lambda (this)
+	(let ((attribute-symbols
+	       '(base-bod base-str base-rea base-agi
+			  base-cha base-log base-int base-wil)))
+	  (map this attribute-symbols
+	       (map (lambda (cap)
+		      (plus-minus (div-down cap 2) 1))
+		    attribute-caps))
+	  (map (lambda (attribute cap)
+		 (this 'container-operation-set-caps attribute 0 cap))
+	       attribute-symbols
+	       attribute-caps)
+	  (map (lambda (attribute)
+		 (this 'container-operation-set-type
+		       attribute 'integer))
+	       attribute-symbols))))))
+
+(define new-genes (unique-counter 0))
+
 ;;; --- Templates ---
 
 ;;; The basic metahuman template
 ;;; this is also the "human" template.
-(define metahuman
+(define metahuman-template
   (template
    (metahuman #t)
-   (meta human)
-   (base-bod (type integer))
-   (base-bod (caps 0 6))
-   (base-bod (plus-minus 3 1))
-   (base-str (type integer))
-   (base-str (caps 0 6))
-   (base-str (plus-minus 3 1))
-   (base-rea (type integer))
-   (base-rea (caps 0 6))
-   (base-rea (plus-minus 3 1))
-   (base-qui (type integer))
-   (base-qui (caps 0 6))
-   (base-qui (plus-minus 3 1))
-   (base-log (type integer))
-   (base-log (caps 0 6))
-   (base-log (plus-minus 3 1))
-   (base-int (type integer))
-   (base-int (caps 0 6))
-   (base-int (plus-minus 3 1))
-   (base-cha (type integer))
-   (base-cha (caps 0 6))
-   (base-cha (plus-minus 3 1))
-   (base-wil (type integer))
-   (base-wil (caps 0 6))
-   (base-wil (plus-minus 3 1))
+   (metatype human)
+   (transform (metahuman-attributes 6 6 6 6 6 6 6 6))
    (physical-wound-track 0)
+   (physical-wound-max
+    (expression
+     (lambda (this)
+       (+ 8 (div-down (this 'base-body) 2)))))
    (stun-wound-track 0)
+   (stun-wound-max
+    (expression
+     (lambda (this)
+       (+ 8 (div-down (this 'base-will) 2)))))
    (mental-limit
     (expression
      (lambda (this)
@@ -459,8 +484,28 @@
    (cyberware (list))
    (genes (new-genes))))
 
-(define cyberware
-  (template (inheriting device)
+(define dwarf-racial-template
+  (template
+   (metatype dwarf)
+   (transform (metahuman-attributes 8 8 5 6 6 6 6 7))))
+
+(define ork-racial-template
+  (template
+   (metatype ork)
+   (transform (metahuman-attributes 9 8 6 6 5 5 6 6))))
+
+(define elf-racial-template
+  (template
+   (metatype elf)
+   (transform (metahuman-attributes 6 6 6 7 8 6 6 6))))
+
+(define troll-racial-template
+  (template
+   (metatype troll)
+   (transform (metahuman-attributes 10 10 6 5 4 5 5 6))))
+
+(define cyberware-template
+  (template (inheriting device-template)
    (cyberware #t)
    (base-essence-cost 0.0)
    (essence-cost
@@ -477,42 +522,42 @@
    (location torso)
    (visible #f)))
 
-(define datajack
-  (template (inheriting cyberware)
+(define datajack-template
+  (template (inheriting cyberware-template)
    (datajack #t)
    (base-essence-cost 0.1)
    (location head)
    (visible #t)))
 
-(define cyberlimb
-  (template (inheriting cyberware)
+(define cyberlimb-template
+  (template (inheriting cyberware-template)
    (cyberlimb #t)
    (cyberware-location right-arm)
    (base-str 3)
    (base-bod 3)
    (base-qui 3)
    (essence-cost 1.0)
-   (visible #f)))
+   (visible #t)))
 
-(define device
-  (template (inheriting gear)
+(define device-template
+  (template (inheriting gear-template)
    (device #t)
-   (rating 1)))
+   (device-rating 1)))
 
-(define gear
+(define gear-template
   (template
    (availability 10)
    (legality legal)
-   (price 10)))
+   (value 10)))                         ; in nuyen
 
-(define cyberdeck
-  (template (inheriting device)
+(define cyberdeck-template
+  (template (inheriting device-template)
    (cyberdeck #t)
-   (rating 3)
-   (sleaze 6)
-   (attack 5)
-   (firewall 4)
-   (data-processing 3)))
+   (device-rating 3)
+   (matrix-sleaze 6)
+   (matrix-attack 5)
+   (matrix-firewall 4)
+   (matrix-data-processing 3)))
 
 (define configure-cyberdeck
   (lambda (device one two three four)
@@ -531,39 +576,30 @@
 	    #t)
 	  #f))))
 
-(define *genetic-code* 0)
-
-(define new-genes
-  (lambda ()
-    (let ((genes *genetic-code*))
-      (set! *genetic-code* (+ *genetic-code* 1))
-      genes)))
-
-(define system-identification-number
+(define system-identification-number-template
   (template
    (sin-type corporate-born)
    (name "Yamada Taro")
    (genetic-data #nil)
    (issuer renraku)
    (ethnicity asian)
-   (meta human)
+   (metatype human)
+   (awakened-emerged #f)
    (licenses (list))))
 
-(define license
+(define license-template
   (template
    (license-type civilian-firearms)
-   (issuer renraku)))	    
+   (issuer renraku)))    
 
-(define wageslave
-  (template (inheriting metahuman)
+(define wageslave-template
+  (template (inheriting metahuman-template)
    (base-log (add (range 0 1)))
    (base-cha (add (range 0 1)))
    (cyberware (add-gear
-	       (list
-		(cons 2 (one-in-template
-			 2 alphaware (datajack))))))))
+	       (symbol-list ((2 (datajack-template))))))))
 
-(define mage
+(define mage-template
   (template
    (magic 3)
    (magic (caps 0 #f))
@@ -574,7 +610,7 @@
    (arcana (range 0 3))
    (banishing (range 0 3))
    (initiation (range 0 1))
-   (log (add (range 1 2)))
-   (wil (add (range 1 2)))
+   (base-log (add (range 1 2)))
+   (base-wil (add (range 1 2)))
    (bound-spirits (list))
    (known-spells (list))))
