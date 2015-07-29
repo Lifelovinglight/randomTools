@@ -23,10 +23,9 @@
       (fold' fn ln init))))
 
 ;;; Create a division function.
-(define divider
-  (lambda (fn)
-    (lambda (e n)
-      (fn (/ e n)))))
+(define-macro (divider fn)
+  `(lambda (e n)
+     (,fn (/ e n))))
 
 ;;; Divide a number, rounding up.
 (define div-up (divider ceiling))
@@ -47,7 +46,18 @@
 	     (else (error "unknown type")))))
       (if (type-function val)
 	  #t
-	  (error "type error")))))
+	  (error (string-append "type error: "
+				(format #nil "~a" val)
+				" is not of type "
+				(format #nil "~a" type)))))))
+
+;;; A macro that defines lambda expressions that perform type
+;;; checking before running the function body.
+(define-macro
+  (typed-lambda args . rest)
+  `(lambda ,(map car args)
+     (map typecheck (list ,@(map car args)) ',(map cadr args))
+     ,@rest))
 
 ;;; Does ln contain the value n?
 (define in-list
@@ -76,8 +86,7 @@
 
 ;;; Roll n six-sided dice.
 (define d6
-  (lambda (n)
-    (typecheck n 'integer)
+  (typed-lambda ((n integer))
     (map (lambda args
 	   (+ 1 (random 6)))
 	 (iota n))))
@@ -90,23 +99,19 @@
 
 ;;; Is this dice roll a success?
 (define success?
-  (lambda (n)
-    (typecheck n 'integer)
+  (typed-lambda ((n integer))
     (>= n 5)))
 
 ;;; Is this dice roll a glitch?
 (define glitch?
-  (lambda (n)
-    (typecheck n 'integer)
+  (typed-lambda ((n integer))
     (= n 1)))
 
 ;;; Roll a given SR5 dice pool with a limit
 ;;; returning the number of successes, and
 ;;; setting the glitch flag.
 (define roll
-  (lambda (pool limit)
-    (typecheck pool 'integer)
-    (typecheck limit 'integer)
+  (typed-lambda ((pool integer) (limit integer))
     (let ((dice (d6 pool)))
       (if *show-rolls*
 	  (begin (display dice)
@@ -123,10 +128,7 @@
 
 ;;; SR5 success test.
 (define success-test
-  (lambda (pool limit threshold)
-    (typecheck pool 'integer)
-    (typecheck limit 'integer)
-    (typecheck threshold 'integer)
+  (typed-lambda ((pool integer) (limit integer) (threshold integer))
     (let ((result (roll pool limit)))
 	    (if (>= result threshold)
 		#t
@@ -134,11 +136,10 @@
 
 ;;; SR5 opposed test
 (define opposed-test
-  (lambda (pool-attacker limit-attacker pool-defender limit-defender)
-    (typecheck pool-attacker 'integer)
-    (typecheck limit-attacker 'integer)
-    (typecheck pool-defender 'integer)
-    (typecheck limit-defender 'integer)
+  (typed-lambda ((pool-attacker integer)
+	         (limit-attacker integer)
+	         (pool-defender integer)
+	         (limit-defender integer))
     (let ((result-attacker (roll pool-attacker limit-attacker))
 	  (result-defender (roll pool-defender limit-defender)))
       (max 0 (- result-attacker result-defender)))))
@@ -146,11 +147,10 @@
 ;;; Predicate version of an SR5 opposed test
 ;;; tie goes to the defender as per the corebook rules.
 (define opposed-test?
-  (lambda (pool-attacker limit-attacker pool-defender limit-defender)
-    (typecheck pool-attacker 'integer)
-    (typecheck limit-attacker 'integer)
-    (typecheck pool-defender 'integer)
-    (typecheck limit-defender 'integer)
+  (typed-lambda ((pool-attacker integer)
+	         (limit-attacker integer)
+	         (pool-defender integer)
+	         (limit-defender integer))
     (let ((attacker-successes (opposed-test
 			       pool-attacker limit-attacker
 			       pool-defender limit-defender)))
@@ -159,9 +159,7 @@
 ;;; Calculate dice pool for an attribute and skill
 ;;; defaulting if the skill isn't known.
 (define default
-  (lambda (attribute skill)
-    (typecheck attribute 'integer)
-    (typecheck skill 'integer)
+  (typed-lambda ((attribute integer) (skill integer))
     (if (= 0 skill)
 	(- attribute 1)
 	(+ skill attribute))))
