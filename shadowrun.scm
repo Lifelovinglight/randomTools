@@ -33,6 +33,7 @@
 ;;; Divide a number, rounding down.
 (define div-down (divider floor))
 
+;;; A hash table of type symbols and predicates.
 (define *types*
   (fold (make-hash-table)
 	(lambda (t kv)
