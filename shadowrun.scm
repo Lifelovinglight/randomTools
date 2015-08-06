@@ -614,3 +614,42 @@
    (base-wil (add (range 1 2)))
    (bound-spirits (list))
    (known-spells (list))))
+
+(define make-linked-hash
+  (lambda ()
+    (cons (make-hash-table)
+	  (make-hash-table)))
+
+(define linked-hash-ref
+  (lambda (table k)
+    (hash-ref (car table) k)))
+
+(define linked-hash-ref-val
+  (lambda (table v)
+    (hash-ref (cdr table) k)))
+
+(define linked-hash-set!
+  (lambda (table k v)
+    (hash-set! (car table) k v)
+    (hash-set! (cdr table) v k)))
+
+(define linked-hash?
+  (lambda (table)
+    (and (hash-table? (car table))
+	 (hash-table? (cdr table)))))
+
+
+
+(define make-quadtree-leaf
+  (lambda (parent pos data)
+    (cons up (cons pos data))))
+
+(define make-quadtree-node
+  (lambda (parent q1 q2 q3 q4)
+    (cons up (cons q1 (cons q2 (cons q3 q4))))))
+
+(define get-parent
+  (lambda (quadtree-node-or-leaf)
+    (car quadtree-node-or-leaf)))
+
+(
